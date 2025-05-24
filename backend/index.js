@@ -79,9 +79,13 @@ app.use((err, req, res, next) => {
 });
 
 
-app.use(express.static(path.join(dirname,"/frontend/dist")));
+// For production, serve static files from frontend/dist
+const frontendDistPath = path.join(dirname, "frontend", "dist");
+console.log('Frontend static path:', frontendDistPath);
+
+app.use(express.static(frontendDistPath));
 app.get("*", (req, res) => {
-  res.sendFile(path.join(dirname, "/frontend/dist/index.html"));
+  res.sendFile(path.join(frontendDistPath, "index.html"));
 });
 
 server.listen(PORT, async () => {
