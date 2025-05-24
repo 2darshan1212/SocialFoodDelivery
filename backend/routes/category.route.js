@@ -4,7 +4,7 @@ import { Product } from "../models/product.model.js";
 import isAuthenticated from "../middlewares/isAuthenticated.js";
 import { verifyAdmin } from "../middlewares/verifyAdmin.js";
 import upload from "../middlewares/multer.js";
-import { v2 as cloudinary } from "cloudinary";
+import cloudinary from "../cloudinaryConfig.js";
 
 const router = express.Router();
 
@@ -97,11 +97,26 @@ router.route("/create").post(
       
       // Upload image to cloudinary if provided
       if (req.file) {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "categories"
-        });
-        
-        categoryData.image = result.secure_url;
+        try {
+          console.log('Uploading category image to Cloudinary...');
+          // Convert buffer to base64 string for Cloudinary upload
+          const b64 = Buffer.from(req.file.buffer).toString('base64');
+          const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+          
+          const result = await cloudinary.uploader.upload(dataURI, {
+            folder: "categories"
+          });
+          
+          console.log('Category image uploaded successfully');
+          categoryData.image = result.secure_url;
+        } catch (uploadError) {
+          console.error('Error uploading category image:', uploadError);
+          return res.status(400).json({
+            success: false,
+            message: "Error uploading category image",
+            error: uploadError.message
+          });
+        }
       }
       
       // Save category to database
@@ -176,11 +191,26 @@ router.route("/:id").put(
           }
         }
         
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "categories"
-        });
-        
-        category.image = result.secure_url;
+        try {
+          console.log('Uploading updated category image to Cloudinary...');
+          // Convert buffer to base64 string for Cloudinary upload
+          const b64 = Buffer.from(req.file.buffer).toString('base64');
+          const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+          
+          const result = await cloudinary.uploader.upload(dataURI, {
+            folder: "categories"
+          });
+          
+          console.log('Updated category image uploaded successfully');
+          category.image = result.secure_url;
+        } catch (uploadError) {
+          console.error('Error uploading updated category image:', uploadError);
+          return res.status(400).json({
+            success: false,
+            message: "Error uploading category image",
+            error: uploadError.message
+          });
+        }
       }
       
       // Save updated category

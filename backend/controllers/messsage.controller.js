@@ -25,17 +25,39 @@ export const sendMessage = async (req, res) => {
     let fileName = null;
     
     if (req.file) {
-      console.log("Processing file:", req.file.originalname, req.file.mimetype);
+      console.log("Processing file:", req.file.originalname, req.file.mimetype, "Size:", req.file.size, "bytes");
+      
+      // Check if file is too large (over 5MB)
+      if (req.file.size > 5 * 1024 * 1024) {
+        console.warn("File too large:", req.file.size, "bytes");
+        return res.status(400).json({ 
+          success: false, 
+          message: "File is too large. Maximum file size is 5MB." 
+        });
+      }
+      
       // Upload file to Cloudinary
       try {
         const result = await uploadToCloudinary(req.file);
         console.log("Cloudinary upload result:", result);
+        
+        if (!result) {
+          console.error("File upload failed - null result returned");
+          return res.status(400).json({ 
+            success: false, 
+            message: "File upload failed. Please try again with a smaller file or different format." 
+          });
+        }
+        
         fileUrl = result.url;
         fileType = result.fileType;
         fileName = req.file.originalname;
       } catch (uploadError) {
         console.error("File upload error:", uploadError);
-        return res.status(400).json({ success: false, message: "File upload failed" });
+        return res.status(400).json({ 
+          success: false, 
+          message: "File upload failed: " + (uploadError.message || "Unknown error") 
+        });
       }
     }
 

@@ -54,33 +54,50 @@ export const formatBufferToDataURI = (file) => {
 // Upload file to Cloudinary
 export const uploadToCloudinary = async (file) => {
   try {
-    console.log("Starting Cloudinary upload for:", file.originalname);
+    console.log("Starting Cloudinary upload for:", file.originalname, "Size:", file.size, "bytes");
     
     if (!file || !file.buffer) {
+      console.error("Missing file or buffer", { file: !!file, buffer: !!(file && file.buffer) });
       throw new Error("Invalid file or missing buffer");
     }
     
-    const fileFormat = formatBufferToDataURI(file);
-    
-    if (!fileFormat || !fileFormat.content) {
-      throw new Error("Failed to format file");
-    }
-    
-    console.log("Uploading to Cloudinary...");
-    const result = await cloudinary.uploader.upload(fileFormat.content, {
-      resource_type: "auto",
-      folder: "chat_files",
+    // Log Cloudinary config status without sensitive data
+    console.log("Cloudinary config check:", {
+      cloud_name_set: !!cloudinary.config().cloud_name,
+      api_key_set: !!cloudinary.config().api_key,
+      api_secret_set: !!cloudinary.config().api_secret
     });
     
-    console.log("Cloudinary upload successful:", result.secure_url);
-    
-    return {
-      url: result.secure_url,
-      publicId: result.public_id,
-      fileType: file.mimetype.startsWith('image/') ? 'image' : 'document'
-    };
+    try {
+      const fileFormat = formatBufferToDataURI(file);
+      
+      if (!fileFormat || !fileFormat.content) {
+        console.error("Format failed", { fileFormatExists: !!fileFormat, contentExists: !!(fileFormat && fileFormat.content) });
+        throw new Error("Failed to format file");
+      }
+      
+      console.log(`Uploading to Cloudinary... (file type: ${file.mimetype})`);
+      const result = await cloudinary.uploader.upload(fileFormat.content, {
+        resource_type: "auto",
+        folder: "chat_files",
+        timeout: 120000, // Increase timeout for larger files
+      });
+      
+      console.log("Cloudinary upload successful:", result.secure_url);
+      
+      return {
+        url: result.secure_url,
+        publicId: result.public_id,
+        fileType: file.mimetype.startsWith('image/') ? 'image' : 'document'
+      };
+    } catch (formatError) {
+      console.error("Error in formatting or uploading:", formatError);
+      throw formatError;
+    }
   } catch (error) {
     console.error("Error uploading to Cloudinary:", error);
-    throw new Error(`File upload failed: ${error.message}`);
+    // Return null instead of throwing, allowing the API to continue
+    // and provide a user-friendly error message
+    return null;
   }
-}; 
+};

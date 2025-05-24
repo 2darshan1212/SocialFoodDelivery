@@ -796,7 +796,7 @@ export const findNearbyPosts = async (req, res) => {
 export const searchPosts = async (req, res) => {
   try {
     const { 
-      q, 
+      q = "", 
       category, 
       minPrice, 
       maxPrice, 
@@ -808,10 +808,12 @@ export const searchPosts = async (req, res) => {
       limit = 10
     } = req.query;
     
-    // Return only categories if no search parameters
-    if (!q && (!category || category === 'All') && !minPrice && !maxPrice && !rating && !vegetarian && !spicy) {
-      // Get all categories from enum or database
-      const categories = ["Breakfast", "Lunch", "Dinner", "Snacks", "Dessert", "Drinks", "FastFood", "Vegetarian", "Other"];
+    // Always return categories regardless of search parameters
+    const categories = ["Breakfast", "Lunch", "Dinner", "Snacks", "Dessert", "Drinks", "FastFood", "Vegetarian", "Other"];
+    
+    // Return only categories if no or empty search parameters
+    if ((!q || q.trim() === "") && (!category || category === 'All') && !minPrice && !maxPrice && !rating && !vegetarian && !spicy) {
+      console.log("No search parameters provided, returning only categories");
       return res.status(200).json({ success: true, posts: [], categories });
     }
 
