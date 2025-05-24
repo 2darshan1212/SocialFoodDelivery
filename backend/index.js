@@ -79,12 +79,21 @@ app.use((err, req, res, next) => {
 });
 
 
+// IMPORTANT: First define all API routes, then serve static files
+// Make sure all API routes are defined before this point
+
 // For production, serve static files from frontend/dist
 const frontendDistPath = path.join(dirname, "frontend", "dist");
 console.log('Frontend static path:', frontendDistPath);
 
+// Serve static files from the frontend build
 app.use(express.static(frontendDistPath));
+
+// The catch-all route should be the LAST route defined
+// This will serve the frontend's index.html for any route not matched by the API
 app.get("*", (req, res) => {
+  // Add detailed logging to help diagnose any routing issues
+  console.log(`Catch-all route handling request for: ${req.originalUrl}`);
   res.sendFile(path.join(frontendDistPath, "index.html"));
 });
 

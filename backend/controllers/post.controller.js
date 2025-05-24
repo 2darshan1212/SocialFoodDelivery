@@ -793,6 +793,9 @@ export const findNearbyPosts = async (req, res) => {
   }
 };
 
+// Define categories once at the module level to avoid redeclaration
+const FOOD_CATEGORIES = ["Breakfast", "Lunch", "Dinner", "Snacks", "Dessert", "Drinks", "FastFood", "Vegetarian", "Other"];
+
 export const searchPosts = async (req, res) => {
   try {
     const { 
@@ -808,13 +811,10 @@ export const searchPosts = async (req, res) => {
       limit = 10
     } = req.query;
     
-    // Always return categories regardless of search parameters
-    const categories = ["Breakfast", "Lunch", "Dinner", "Snacks", "Dessert", "Drinks", "FastFood", "Vegetarian", "Other"];
-    
     // Return only categories if no or empty search parameters
     if ((!q || q.trim() === "") && (!category || category === 'All') && !minPrice && !maxPrice && !rating && !vegetarian && !spicy) {
       console.log("No search parameters provided, returning only categories");
-      return res.status(200).json({ success: true, posts: [], categories });
+      return res.status(200).json({ success: true, posts: [], FOOD_CATEGORIES });
     }
 
     // Build filter object
@@ -899,8 +899,7 @@ export const searchPosts = async (req, res) => {
       Post.countDocuments(filter)
     ]);
     
-    // Get all categories for filter UI
-    const categories = ["Breakfast", "Lunch", "Dinner", "Snacks", "Dessert", "Drinks", "FastFood", "Vegetarian", "Other"];
+    // Categories already defined above, no need to redefine
     
     // Calculate if there are more results
     const hasMore = totalCount > skip + posts.length;
@@ -908,7 +907,7 @@ export const searchPosts = async (req, res) => {
     return res.status(200).json({ 
       success: true, 
       posts, 
-      categories,
+      categories: FOOD_CATEGORIES,
       pagination: {
         total: totalCount,
         page: Number(page),
