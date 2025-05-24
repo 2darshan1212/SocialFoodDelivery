@@ -1,22 +1,22 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  Avatar,
-  Button,
-  CircularProgress,
-  Paper,
+import { 
+  Avatar, 
+  Button, 
+  CircularProgress, 
+  Paper, 
+  Drawer,
   IconButton,
-  Tooltip,
+  useMediaQuery,
+  useTheme,
+  Badge,
+  Tooltip
 } from "@mui/material";
-import {
-  MessageCircleCode,
-  Paperclip,
-  FileIcon,
-  X,
-} from "lucide-react";
+import { MessageCircleCode, Menu, X, Paperclip, ImageIcon, FileIcon } from "lucide-react";
 import axios from "axios";
 
 import Messages from "./Messages";
+import ConversationList from "./ConversationList";
 import { setMessages } from "../../redux/chatSlice";
 import { setSelectedUser } from "../../redux/authSlice";
 
@@ -24,9 +24,13 @@ const ChatPage = () => {
   const dispatch = useDispatch();
   const { selectedUser } = useSelector((store) => store.auth);
   const { messages } = useSelector((store) => store.chat);
+  const { unreadCounts } = useSelector((store) => store.chat);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [textMessage, setTextMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
   const messagesEndRef = useRef(null);
@@ -38,15 +42,14 @@ const ChatPage = () => {
     // Check if we should auto-scroll based on how far the user has scrolled up
     const shouldAutoScroll = () => {
       if (!messagesContainerRef.current) return true;
-
+      
       const container = messagesContainerRef.current;
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      
       // If the user is already near the bottom (within 150px), auto-scroll
       return distanceFromBottom < 150;
     };
-
+    
     // Scroll to bottom if appropriate
     if (messagesEndRef.current && shouldAutoScroll()) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -70,12 +73,12 @@ const ChatPage = () => {
         messagesEndRef.current.scrollIntoView({ behavior: "auto" });
       }
     };
-
+    
     // Add event listener for custom event from Messages component
-    window.addEventListener("chat-messages-loaded", handleMessagesLoaded);
-
+    window.addEventListener('chat-messages-loaded', handleMessagesLoaded);
+    
     return () => {
-      window.removeEventListener("chat-messages-loaded", handleMessagesLoaded);
+      window.removeEventListener('chat-messages-loaded', handleMessagesLoaded);
     };
   }, []);
 
@@ -95,7 +98,7 @@ const ChatPage = () => {
   // Reset selected user on unmount
   useEffect(() => {
     return () => dispatch(setSelectedUser(null));
-  }, [dispatch]);
+  }, []);
 
   // Clean up file preview when component unmounts
   useEffect(() => {
@@ -110,14 +113,14 @@ const ChatPage = () => {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
+    
     // Log file details for debugging
     console.log("Selected file:", file);
-
+    
     setSelectedFile(file);
-
+    
     // Create preview for images
-    if (file.type.startsWith("image/")) {
+    if (file.type.startsWith('image/')) {
       const objectUrl = URL.createObjectURL(file);
       setFilePreview(objectUrl);
     } else {
@@ -127,11 +130,11 @@ const ChatPage = () => {
 
   // Format file size for display
   const formatFileSize = (bytes) => {
-    if (!bytes) return "0 Bytes";
+    if (!bytes) return '0 Bytes';
     const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Reset file selection
@@ -142,7 +145,7 @@ const ChatPage = () => {
       setFilePreview(null);
     }
     if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+      fileInputRef.current.value = '';
     }
   };
 
@@ -151,25 +154,25 @@ const ChatPage = () => {
 
     try {
       setIsSending(true);
-
+      
       // Create form data for file upload
       const formData = new FormData();
       // Always include a text message (empty string if there's no text)
-      formData.append("textMessage", textMessage.trim() || "");
-
+      formData.append('textMessage', textMessage.trim() || '');
+      
       if (selectedFile) {
-        formData.append("file", selectedFile);
+        formData.append('file', selectedFile);
         console.log("Appending file to form data:", selectedFile.name);
       }
-
+      
       console.log("Sending message to:", receiverId);
-
+      
       const res = await axios.post(
         `https://socialfooddelivery-2.onrender.com/api/v1/message/send/${receiverId}`,
         formData,
         {
-          headers: {
-            "Content-Type": "multipart/form-data",
+          headers: { 
+            'Content-Type': 'multipart/form-data',
           },
           withCredentials: true,
         }
@@ -179,15 +182,10 @@ const ChatPage = () => {
 
       if (res.data.success) {
         // Use a function updater to ensure we're working with the latest state
-        dispatch(
-          setMessages((prevMessages) => [
-            ...(prevMessages || []),
-            res.data.newMessage,
-          ])
-        );
+        dispatch(setMessages(prevMessages => [...(prevMessages || []), res.data.newMessage]));
         setTextMessage("");
         handleCancelFile();
-
+        
         // Force scroll to bottom after sending a message
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -204,22 +202,50 @@ const ChatPage = () => {
     setDrawerOpen(!drawerOpen);
   };
 
-  // Helper function to handle message sending
-  const handleSendMessage = () => {
-    if (selectedUser) {
-      sendMessageHandler(selectedUser._id);
-    }
+  // Handle conversation selection
+  const handleConversationSelected = () => {
+    // Close drawer whenever a conversation is selected, regardless of screen size
+    setDrawerOpen(false);
   };
+
+  // Calculate total unread messages
+  const totalUnreadCount = unreadCounts ? 
+    Object.values(unreadCounts).reduce((sum, count) => sum + count, 0) : 0;
+
+  // Menu button component with badge
+  const MenuButton = () => (
+    <IconButton 
+      onClick={toggleDrawer} 
+      color="primary"
+      size="large"
+      sx={{
+        backgroundColor: 'rgba(63, 81, 181, 0.1)',
+        '&:hover': {
+          backgroundColor: 'rgba(63, 81, 181, 0.2)',
+        },
+        zIndex: 100
+      }}
+    >
+      <Badge 
+        badgeContent={totalUnreadCount > 0 ? totalUnreadCount : null} 
+        color="error"
+      >
+        <Menu size={24} />
+      </Badge>
+    </IconButton>
+  );
 
   return (
     <div className="h-[calc(100vh-100px)] relative mb-2">
-      {/* Chat Area */}
-
-      {/* Main Chat Area */}
-      <Paper
-        elevation={0}
-        className="flex-1 flex flex-col h-full overflow-hidden bg-gray-50"
-      >
+      {/* Always show menu button on small screens */}
+      {isMobile && (
+        <div className="absolute top-2 right-2 z-50">
+          <MenuButton />
+        </div>
+      )}
+      
+      {/* Chat Area - Full width */}
+      <Paper className="h-full p-0 overflow-hidden flex flex-col">
         {selectedUser ? (
           <section className="flex flex-col h-full">
             {/* Chat Header */}
@@ -234,17 +260,15 @@ const ChatPage = () => {
                   <span className="font-semibold text-gray-800">
                     {selectedUser.username}
                   </span>
-                  <span className="text-xs text-gray-500">
-                    {selectedUser.isOnline ? "Online" : "Offline"}
-                  </span>
+                  <span className="text-xs text-gray-500">Chatting now</span>
                 </div>
               </div>
             </div>
 
             {/* Chat Messages */}
-            <div
+            <div 
               ref={messagesContainerRef}
-              className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50"
+              className="flex-1 overflow-y-auto px-2 py-4 space-y-2 scrollbar-thin scrollbar-thumb-gray-300"
             >
               <Messages selectedUser={selectedUser} />
               <div ref={messagesEndRef} />
@@ -257,9 +281,9 @@ const ChatPage = () => {
                   <div className="flex items-center gap-2">
                     {filePreview ? (
                       <div className="relative w-16 h-16">
-                        <img
-                          src={filePreview}
-                          alt="Upload preview"
+                        <img 
+                          src={filePreview} 
+                          alt="Upload preview" 
                           className="w-16 h-16 object-cover rounded"
                         />
                       </div>
@@ -267,12 +291,8 @@ const ChatPage = () => {
                       <div className="flex items-center gap-2 bg-gray-100 p-2 rounded">
                         <FileIcon size={20} />
                         <div className="flex flex-col">
-                          <span className="text-sm truncate max-w-[200px]">
-                            {selectedFile.name}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {formatFileSize(selectedFile.size)}
-                          </span>
+                          <span className="text-sm truncate max-w-[200px]">{selectedFile.name}</span>
+                          <span className="text-xs text-gray-500">{formatFileSize(selectedFile.size)}</span>
                         </div>
                       </div>
                     )}
@@ -295,22 +315,20 @@ const ChatPage = () => {
                 ref={fileInputRef}
               />
               <Tooltip title="Attach file">
-                <IconButton
-                  color="primary"
+                <IconButton 
+                  color="primary" 
                   onClick={() => fileInputRef.current.click()}
                   disabled={isSending}
                 >
                   <Paperclip size={20} />
                 </IconButton>
               </Tooltip>
-
+              
               <input
                 value={textMessage}
                 onChange={(e) => setTextMessage(e.target.value)}
                 onKeyDown={(e) =>
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  sendMessageHandler(selectedUser?._id)
+                  e.key === "Enter" && !e.shiftKey && sendMessageHandler(selectedUser?._id)
                 }
                 placeholder="Type a message..."
                 className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -332,17 +350,44 @@ const ChatPage = () => {
           </section>
         ) : (
           // No user selected UI
-          <div className="flex flex-col items-center justify-center h-full text-center text-gray-600 p-4">
-            <MessageCircleCode className="w-20 h-20 mb-4 text-blue-500" />
-            <h1 className="text-xl font-bold mb-2">Your Messages</h1>
-            <p className="text-sm max-w-xs mx-auto">
-              {isMobile
-                ? "Tap the menu icon to select a conversation"
-                : "Select a conversation from the list to start chatting"}
+          <div className="flex flex-col items-center justify-center h-full text-center text-gray-600 relative">
+            <MessageCircleCode className="w-24 h-24 mb-4 text-blue-500" />
+            <h1 className="text-xl font-bold">Your Messages</h1>
+            <p className="text-sm">
+              {isMobile 
+                ? "Tap the menu icon to select a conversation" 
+                : "No conversation selected"}
             </p>
           </div>
         )}
       </Paper>
+
+      {/* Conversations Drawer - Only for mobile users */}
+      {isMobile && (
+        <Drawer
+          anchor="bottom"
+          open={drawerOpen}
+          onClose={toggleDrawer}
+          PaperProps={{
+            sx: {
+              width: '100%',
+              height: '80vh',
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+            }
+          }}
+        >
+          <div className="p-3 flex justify-between items-center border-b">
+            <h2 className="text-lg font-semibold">Conversations</h2>
+            <IconButton onClick={toggleDrawer}>
+              <X size={20} />
+            </IconButton>
+          </div>
+          <div className="overflow-auto h-full">
+            <ConversationList onSelectConversation={handleConversationSelected} />
+          </div>
+        </Drawer>
+      )}
     </div>
   );
 };
