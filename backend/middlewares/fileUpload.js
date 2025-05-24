@@ -62,13 +62,23 @@ export const uploadToCloudinary = async (file) => {
     }
     
     // Log Cloudinary config status without sensitive data
+    const cloudConfig = cloudinary.config();
     console.log("Cloudinary config check:", {
-      cloud_name_set: !!cloudinary.config().cloud_name,
-      api_key_set: !!cloudinary.config().api_key,
-      api_secret_set: !!cloudinary.config().api_secret
+      cloud_name: cloudConfig.cloud_name ? cloudConfig.cloud_name.substring(0, 4) + '...' : 'missing',
+      api_key_set: !!cloudConfig.api_key,
+      api_secret_set: !!cloudConfig.api_secret
     });
     
+    // Determine resource type based on mimetype
+    let resourceType = "auto";
+    if (file.mimetype.startsWith('image/')) {
+      resourceType = "image";
+    } else if (file.mimetype.startsWith('video/')) {
+      resourceType = "video";
+    }
+    
     try {
+      // Convert buffer to data URI
       const fileFormat = formatBufferToDataURI(file);
       
       if (!fileFormat || !fileFormat.content) {
@@ -76,10 +86,15 @@ export const uploadToCloudinary = async (file) => {
         throw new Error("Failed to format file");
       }
       
-      console.log(`Uploading to Cloudinary... (file type: ${file.mimetype})`);
+      console.log(`Uploading to Cloudinary as ${resourceType}... (file type: ${file.mimetype})`);
+      
+      // Use different folder based on file type for better organization
+      const folder = file.mimetype.startsWith('image/') ? "images" : 
+                   file.mimetype.startsWith('video/') ? "videos" : "documents";
+      
       const result = await cloudinary.uploader.upload(fileFormat.content, {
-        resource_type: "auto",
-        folder: "chat_files",
+        resource_type: resourceType,
+        folder: folder,
         timeout: 120000, // Increase timeout for larger files
       });
       
@@ -88,7 +103,8 @@ export const uploadToCloudinary = async (file) => {
       return {
         url: result.secure_url,
         publicId: result.public_id,
-        fileType: file.mimetype.startsWith('image/') ? 'image' : 'document'
+        fileType: file.mimetype.startsWith('image/') ? 'image' : 
+                 file.mimetype.startsWith('video/') ? 'video' : 'document'
       };
     } catch (formatError) {
       console.error("Error in formatting or uploading:", formatError);

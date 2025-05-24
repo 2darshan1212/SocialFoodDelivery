@@ -33,7 +33,8 @@ router.route("/:id/comment/all").post(isAuthenticated, getCommentsOfPost);
 router.route("/:id/bookmark").get(isAuthenticated, bookMarkPost);
 router.route("/delete/:id").delete(isAuthenticated, deletePost);
 router.route("/nearby").get(isAuthenticated, findNearbyPosts);
-router.get("/search", isAuthenticated, searchPosts);
+// Make search endpoint public so it works without authentication
+router.get("/search", searchPosts);
 
 // Rating routes
 router.route("/:id/rate").post(isAuthenticated, ratePost);

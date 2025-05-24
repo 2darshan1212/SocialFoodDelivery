@@ -25,24 +25,41 @@ export const sendMessage = async (req, res) => {
     let fileName = null;
     
     if (req.file) {
-      console.log("Processing file:", req.file.originalname, req.file.mimetype, "Size:", req.file.size, "bytes");
+      console.log("Processing file for message:", req.file.originalname, req.file.mimetype, "Size:", req.file.size, "bytes");
       
       // Check if file is too large (over 5MB)
       if (req.file.size > 5 * 1024 * 1024) {
-        console.warn("File too large:", req.file.size, "bytes");
+        console.warn("File too large for message:", req.file.size, "bytes");
         return res.status(400).json({ 
           success: false, 
           message: "File is too large. Maximum file size is 5MB." 
         });
       }
       
+      // Validate file type
+      const acceptedTypes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'video/mp4', 'video/mpeg', 'video/quicktime',
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
+      ];
+      
+      if (!acceptedTypes.includes(req.file.mimetype)) {
+        console.warn("Unsupported file type for message:", req.file.mimetype);
+        return res.status(400).json({
+          success: false,
+          message: "Unsupported file type. Please upload images, videos, PDF, Word documents, or text files."
+        });
+      }
+      
       // Upload file to Cloudinary
       try {
+        console.log("Attempting to upload message attachment to Cloudinary...");
         const result = await uploadToCloudinary(req.file);
-        console.log("Cloudinary upload result:", result);
+        console.log("Cloudinary upload result for message:", result ? "Success" : "Failed");
         
-        if (!result) {
-          console.error("File upload failed - null result returned");
+        if (!result || !result.url) {
+          console.error("Message file upload failed - null or invalid result returned");
           return res.status(400).json({ 
             success: false, 
             message: "File upload failed. Please try again with a smaller file or different format." 

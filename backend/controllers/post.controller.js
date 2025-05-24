@@ -1,5 +1,6 @@
 import sharp from "sharp";
-import cloudinary from "../utils/cloudinary.js";
+// Use the fixed cloudinary configuration
+import cloudinary from "../cloudinaryConfig.js";
 import { Post } from "../models/post.model.js";
 import { User } from "../models/user.model.js";
 import { Comment } from "../models/comment.model.js";
@@ -82,49 +83,96 @@ export const addNewPost = async (req, res) => {
     // Process based on media type
     try {
       if (mediaType === "image") {
-        // Optimize and upload image
-        const optimizedImageBuffer = await sharp(file.buffer)
-          .resize({ width: 800, height: 800, fit: "inside" })
-          .toFormat("jpeg", { quality: 90 })
-          .toBuffer();
-
-        const fileUri = `data:image/jpeg;base64,${optimizedImageBuffer.toString(
-          "base64"
-        )}`;
-
-        console.log("Attempting to upload image to Cloudinary...");
-        const cloudResponse = await cloudinary.uploader.upload(fileUri, {
-          resource_type: "image",
-        });
-        console.log("Cloudinary image upload successful");
-
-        mediaUrl = cloudResponse.secure_url;
-      } else if (mediaType === "video") {
-        // Stream upload video to Cloudinary
-        console.log("Attempting to upload video to Cloudinary...");
-        const streamUpload = () =>
-          new Promise((resolve, reject) => {
-            const stream = cloudinary.uploader.upload_stream(
-              {
-                resource_type: "video",
-                timeout: 60000,
-                chunk_size: 60000000,
-              },
-              (error, result) => {
-                if (error) {
-                  console.error("Cloudinary video upload error:", error);
-                  return reject(error);
-                }
-                resolve(result);
-              }
-            );
-
-            streamifier.createReadStream(file.buffer).pipe(stream);
+        try {
+          // Optimize and upload image
+          const optimizedImageBuffer = await sharp(file.buffer)
+            .resize({ width: 800, height: 800, fit: "inside" })
+            .toFormat("jpeg", { quality: 90 })
+            .toBuffer();
+  
+          const fileUri = `data:image/jpeg;base64,${optimizedImageBuffer.toString(
+            "base64"
+          )}`;
+  
+          console.log("Attempting to upload image to Cloudinary for post...");
+          const cloudResponse = await cloudinary.uploader.upload(fileUri, {
+            resource_type: "image",
+            folder: "posts/images",
+            timeout: 60000
           });
+          console.log("Cloudinary image upload successful for post");
+  
+          if (!cloudResponse || !cloudResponse.secure_url) {
+            console.error("Failed to get secure URL from Cloudinary");
+            return res.status(500).json({
+              success: false,
+              message: "Failed to upload image. Please try again."
+            });
+          }
+          
+          mediaUrl = cloudResponse.secure_url;
+        } catch (imageError) {
+          console.error("Error processing or uploading image:", imageError);
+          return res.status(500).json({
+            success: false,
+            message: "Error processing image. Please try with a different image."
+          });
+        }
+      } else if (mediaType === "video") {
+        try {
+          // Stream upload video to Cloudinary
+          console.log("Attempting to upload video to Cloudinary for post...");
+          const streamUpload = () =>
+            new Promise((resolve, reject) => {
+              const stream = cloudinary.uploader.upload_stream(
+                {
+                  resource_type: "video",
+                  folder: "posts/videos", 
+                  timeout: 120000, // Increased timeout for videos
+                  chunk_size: 60000000,
+                },
+                (error, result) => {
+                  if (error) {
+                    console.error("Cloudinary video upload error:", error);
+                    return reject(error);
+                  }
+                  resolve(result);
+                }
+              );
+              
+              // Check if buffer exists before attempting to create stream
+              if (!file.buffer) {
+                return reject(new Error("Missing file buffer for video upload"));
+              }
+              
+              // Create read stream from buffer
+              try {
+                streamifier.createReadStream(file.buffer).pipe(stream);
+              } catch (streamError) {
+                console.error("Error creating read stream:", streamError);
+                reject(streamError);
+              }
+            });
 
-        const result = await streamUpload();
-        console.log("Cloudinary video upload successful");
-        mediaUrl = result.secure_url;
+          const cloudResponse = await streamUpload();
+          console.log("Cloudinary video upload successful for post");
+          
+          if (!cloudResponse || !cloudResponse.secure_url) {
+            console.error("Failed to get secure URL from Cloudinary for video");
+            return res.status(500).json({
+              success: false,
+              message: "Failed to upload video. Please try again with a smaller video."
+            });
+          }
+          
+          mediaUrl = cloudResponse.secure_url;
+        } catch (videoError) {
+          console.error("Error uploading video:", videoError);
+          return res.status(500).json({
+            success: false,
+            message: "Error uploading video. Please try with a different video or smaller file size."
+          });
+        }
       } else {
         return res
           .status(400)
@@ -798,6 +846,8 @@ const FOOD_CATEGORIES = ["Breakfast", "Lunch", "Dinner", "Snacks", "Dessert", "D
 
 export const searchPosts = async (req, res) => {
   try {
+    // Handle both authenticated and unauthenticated requests
+    // req.id might be undefined for unauthenticated requests, which is fine for search
     const { 
       q = "", 
       category, 
@@ -810,16 +860,16 @@ export const searchPosts = async (req, res) => {
       page = 1,
       limit = 10
     } = req.query;
-    
+        
     // Return only categories if no or empty search parameters
     if ((!q || q.trim() === "") && (!category || category === 'All') && !minPrice && !maxPrice && !rating && !vegetarian && !spicy) {
       console.log("No search parameters provided, returning only categories");
-      return res.status(200).json({ success: true, posts: [], FOOD_CATEGORIES });
+      return res.status(200).json({ success: true, categories: FOOD_CATEGORIES });
     }
 
     // Build filter object
     const filter = {};
-    
+        
     // Text search
     if (q) {
       filter.$or = [
