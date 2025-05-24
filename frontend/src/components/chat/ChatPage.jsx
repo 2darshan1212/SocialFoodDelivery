@@ -5,24 +5,18 @@ import {
   Button,
   CircularProgress,
   Paper,
-  Drawer,
   IconButton,
-  useMediaQuery,
-  useTheme,
-  Badge,
   Tooltip,
 } from "@mui/material";
 import {
   MessageCircleCode,
-  Menu,
-  X,
   Paperclip,
   FileIcon,
+  X,
 } from "lucide-react";
 import axios from "axios";
 
 import Messages from "./Messages";
-import ConversationList from "./ConversationList";
 import { setMessages } from "../../redux/chatSlice";
 import { setSelectedUser } from "../../redux/authSlice";
 
@@ -30,13 +24,9 @@ const ChatPage = () => {
   const dispatch = useDispatch();
   const { selectedUser } = useSelector((store) => store.auth);
   const { messages } = useSelector((store) => store.chat);
-  const { unreadCounts } = useSelector((store) => store.chat);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
   const [textMessage, setTextMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
   const messagesEndRef = useRef(null);
@@ -214,57 +204,16 @@ const ChatPage = () => {
     setDrawerOpen(!drawerOpen);
   };
 
-  // Handle conversation selection
-  const handleConversationSelected = (user) => {
-    dispatch(setSelectedUser(user));
-    // Close drawer whenever a conversation is selected
-    setDrawerOpen(false);
+  // Helper function to handle message sending
+  const handleSendMessage = () => {
+    if (selectedUser) {
+      sendMessageHandler(selectedUser._id);
+    }
   };
 
-  // Calculate total unread messages
-  const totalUnreadCount = unreadCounts
-    ? Object.values(unreadCounts).reduce((sum, count) => sum + count, 0)
-    : 0;
-
-  // Menu button component with badge
-  const MenuButton = ({ onClick, unreadCount }) => (
-    <IconButton
-      onClick={onClick}
-      color="primary"
-      size="large"
-      sx={{
-        backgroundColor: "rgba(63, 81, 181, 0.1)",
-        "&:hover": {
-          backgroundColor: "rgba(63, 81, 181, 0.2)",
-        },
-        zIndex: 100,
-      }}
-    >
-      <Badge badgeContent={unreadCount > 0 ? unreadCount : null} color="error">
-        <Menu size={24} />
-      </Badge>
-    </IconButton>
-  );
-
   return (
-    <div className="h-full flex flex-col md:flex-row overflow-hidden">
-      {/* Mobile Menu Button - Only shown on mobile */}
-      {isMobile && (
-        <div className="sticky top-0 z-10 p-2 bg-white border-b flex justify-between items-center">
-          <h2 className="text-lg font-semibold">Messages</h2>
-          <MenuButton 
-            onClick={toggleDrawer} 
-            unreadCount={totalUnreadCount} 
-          />
-        </div>
-      )}
-
-      {/* Chat Conversations Sidebar - Hidden on mobile, visible on tablet+ */}
-      {!isMobile && (
-        <div className="w-full md:w-1/3 lg:w-1/4 border-r border-gray-200 overflow-auto max-h-[calc(100vh-80px)]">
-          <ConversationList onSelectConversation={handleConversationSelected} />
-        </div>
-      )}
+    <div className="h-[calc(100vh-100px)] relative mb-2">
+      {/* Chat Area */}
 
       {/* Main Chat Area */}
       <Paper
@@ -394,35 +343,6 @@ const ChatPage = () => {
           </div>
         )}
       </Paper>
-
-      {/* Conversations Drawer - Only for mobile users */}
-      {isMobile && (
-        <Drawer
-          anchor="bottom"
-          open={drawerOpen}
-          onClose={toggleDrawer}
-          PaperProps={{
-            sx: {
-              width: "100%",
-              height: "80vh",
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
-            },
-          }}
-        >
-          <div className="p-3 flex justify-between items-center border-b">
-            <h2 className="text-lg font-semibold">Conversations</h2>
-            <IconButton onClick={toggleDrawer}>
-              <X size={20} />
-            </IconButton>
-          </div>
-          <div className="overflow-auto h-full">
-            <ConversationList
-              onSelectConversation={handleConversationSelected}
-            />
-          </div>
-        </Drawer>
-      )}
     </div>
   );
 };
