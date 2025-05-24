@@ -2,7 +2,7 @@
 import axios from "axios";
 
 const instance = axios.create({
-  baseURL: "http://localhost:8000/api/v1", // your backend base URL
+  baseURL: "https://socialfooddelivery-2.onrender.com/api/v1", // your backend base URL
 });
 
 instance.interceptors.request.use((config) => {
