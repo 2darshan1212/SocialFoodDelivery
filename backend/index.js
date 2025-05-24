@@ -24,7 +24,7 @@ const dirname=path.resolve();
 //middlewares
 app.use(
   cors({
-    origin: "https://socialfooddelivery-2.onrender.com",
+    origin: ["https://socialfooddelivery-2.onrender.com", "http://localhost:5173", "http://localhost:5174"],
     credentials: true,
   })
 );

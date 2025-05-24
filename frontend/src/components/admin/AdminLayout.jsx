@@ -28,6 +28,9 @@ import {
   useTheme,
   CircularProgress,
   Button,
+  Paper,
+  BottomNavigation,
+  BottomNavigationAction,
 } from "@mui/material";
 import {
   Dashboard as DashboardIcon,
@@ -43,6 +46,8 @@ import {
   ShoppingCart as ShoppingCartIcon,
   BugReport as BugReportIcon,
   LocalShipping as DeliveryIcon,
+  Add as AddIcon,
+  Message as MessageIcon,
 } from "@mui/icons-material";
 
 const drawerWidth = 240;
@@ -158,6 +163,9 @@ const AdminLayout = () => {
       setMobileOpen(false);
     }
   };
+  
+  // For bottom navigation
+  const [mobileNavValue, setMobileNavValue] = useState(0);
 
   // Check if a route is active
   const isRouteActive = (path) => {
@@ -173,7 +181,7 @@ const AdminLayout = () => {
     { text: "Settings", icon: <SettingsIcon />, path: "/admin/settings" },
   ];
 
-  // If loading, show spinner
+  // Loading state
   if (isLoading) {
     return (
       <Box
@@ -531,11 +539,47 @@ const AdminLayout = () => {
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           minHeight: "100vh",
           bgcolor: "#f5f5f5",
+          pb: { xs: 7, sm: 0 } // Add padding at bottom for mobile navigation
         }}
       >
         <Toolbar /> {/* Spacer for fixed app bar */}
         <Outlet /> {/* Render nested routes */}
       </Box>
+      
+      {/* Mobile Bottom Navigation */}
+      {isMobile && (
+        <Paper 
+          sx={{ 
+            position: 'fixed', 
+            bottom: 0, 
+            left: 0, 
+            right: 0, 
+            zIndex: 1100,
+            borderRadius: 0,
+            boxShadow: 3
+          }} 
+          elevation={3}
+        >
+          <BottomNavigation 
+            value={mobileNavValue} 
+            onChange={handleMobileNavChange}
+            showLabels
+          >
+            <BottomNavigationAction label="Dashboard" icon={<DashboardIcon />} />
+            <BottomNavigationAction 
+              label="Alerts" 
+              icon={
+                <Badge badgeContent={4} color="error">
+                  <NotificationsIcon />
+                </Badge>
+              } 
+            />
+            <BottomNavigationAction label="Create" icon={<AddIcon />} />
+            <BottomNavigationAction label="Messages" icon={<MessageIcon />} />
+            <BottomNavigationAction label="Menu" icon={<MenuIcon />} />
+          </BottomNavigation>
+        </Paper>
+      )}
     </Box>
   );
 };
