@@ -53,63 +53,104 @@ export const addNewPost = async (req, res) => {
   try {
     const { caption, price, category, vegetarian, spicyLevel } = req.body;
     const file = req.file;
-    const mediaType = file?.mimetype.split("/")[0]; // 'image' or 'video'
     const authorId = req.id;
 
+    // Validate required fields
     if (!file) {
       return res
         .status(400)
         .json({ message: "Media Required", success: false });
     }
 
-    let mediaUrl = null;
+    // Extra validation to ensure authorId exists
+    if (!authorId) {
+      return res
+        .status(401)
+        .json({ message: "Authentication required", success: false });
+    }
 
-    if (mediaType === "image") {
-      // Optimize and upload image
-      const optimizedImageBuffer = await sharp(file.buffer)
-        .resize({ width: 800, height: 800, fit: "inside" })
-        .toFormat("jpeg", { quality: 90 })
-        .toBuffer();
-
-      const fileUri = `data:image/jpeg;base64,${optimizedImageBuffer.toString(
-        "base64"
-      )}`;
-
-      const cloudResponse = await cloudinary.uploader.upload(fileUri, {
-        resource_type: "image",
-      });
-
-      mediaUrl = cloudResponse.secure_url;
-    } else if (mediaType === "video") {
-      // Stream upload video to Cloudinary
-      const streamUpload = () =>
-        new Promise((resolve, reject) => {
-          const stream = cloudinary.uploader.upload_stream(
-            {
-              resource_type: "video",
-              timeout: 60000,
-              chunk_size: 60000000,
-            },
-            (error, result) => {
-              if (error) return reject(error);
-              resolve(result);
-            }
-          );
-
-          streamifier.createReadStream(file.buffer).pipe(stream);
-        });
-
-      const result = await streamUpload();
-      mediaUrl = result.secure_url;
-    } else {
+    // Safely extract media type with fallback
+    const mediaType = file?.mimetype ? file.mimetype.split("/")[0] : null;
+    if (!mediaType) {
       return res
         .status(400)
-        .json({ message: "Unsupported media type", success: false });
+        .json({ message: "Invalid media format", success: false });
+    }
+
+    let mediaUrl = null;
+
+    // Process based on media type
+    try {
+      if (mediaType === "image") {
+        // Optimize and upload image
+        const optimizedImageBuffer = await sharp(file.buffer)
+          .resize({ width: 800, height: 800, fit: "inside" })
+          .toFormat("jpeg", { quality: 90 })
+          .toBuffer();
+
+        const fileUri = `data:image/jpeg;base64,${optimizedImageBuffer.toString(
+          "base64"
+        )}`;
+
+        console.log("Attempting to upload image to Cloudinary...");
+        const cloudResponse = await cloudinary.uploader.upload(fileUri, {
+          resource_type: "image",
+        });
+        console.log("Cloudinary image upload successful");
+
+        mediaUrl = cloudResponse.secure_url;
+      } else if (mediaType === "video") {
+        // Stream upload video to Cloudinary
+        console.log("Attempting to upload video to Cloudinary...");
+        const streamUpload = () =>
+          new Promise((resolve, reject) => {
+            const stream = cloudinary.uploader.upload_stream(
+              {
+                resource_type: "video",
+                timeout: 60000,
+                chunk_size: 60000000,
+              },
+              (error, result) => {
+                if (error) {
+                  console.error("Cloudinary video upload error:", error);
+                  return reject(error);
+                }
+                resolve(result);
+              }
+            );
+
+            streamifier.createReadStream(file.buffer).pipe(stream);
+          });
+
+        const result = await streamUpload();
+        console.log("Cloudinary video upload successful");
+        mediaUrl = result.secure_url;
+      } else {
+        return res
+          .status(400)
+          .json({ message: "Unsupported media type: " + mediaType, success: false });
+      }
+    } catch (uploadError) {
+      console.error("Media upload error:", uploadError);
+      return res.status(500).json({
+        message: "Failed to upload media. Please try again.",
+        error: uploadError.message,
+        success: false
+      });
+    }
+
+    // Ensure we have a valid URL after upload
+    if (!mediaUrl) {
+      return res.status(500).json({
+        message: "Media upload failed - no URL returned",
+        success: false
+      });
     }
 
     // Parse boolean flag
     const isVegetarian = vegetarian === "true" || vegetarian === true;
 
+    console.log("Creating post in database...");
     // Save post to DB
     const post = await Post.create({
       caption,
@@ -136,14 +177,24 @@ export const addNewPost = async (req, res) => {
       }
     });
 
-    const user = await User.findById(authorId);
-    if (user) {
-      user.posts.push(post._id);
-      await user.save();
+    // Update user's posts array
+    try {
+      const user = await User.findById(authorId);
+      if (user) {
+        user.posts.push(post._id);
+        await user.save();
+      } else {
+        console.warn(`User ${authorId} not found when adding post`);
+      }
+    } catch (userError) {
+      console.error("Error updating user with new post:", userError);
+      // Continue anyway - post was created successfully
     }
 
+    // Populate author details
     await post.populate({ path: "author", select: "username profilePicture location" });
 
+    console.log("Post created successfully:", post._id);
     return res.status(201).json({
       message: "New Post Added",
       post,
@@ -151,7 +202,11 @@ export const addNewPost = async (req, res) => {
     });
   } catch (error) {
     console.error("Add New Post Error:", error);
-    res.status(500).json({ message: "Internal Error", success: false });
+    res.status(500).json({
+      message: "Internal server error when creating post",
+      error: error.message,
+      success: false
+    });
   }
 };
 
