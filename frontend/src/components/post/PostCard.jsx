@@ -73,7 +73,7 @@ const GoogleMapEmbed = ({ lat1, lon1, lat2, lon2, height = 400 }) => {
 };
 
 // API base URL from environment or default to localhost
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://socialfooddelivery-2.onrender.com";
 
 /**
  * Calculate the distance between two points using the Haversine formula with enhanced accuracy
@@ -804,7 +804,7 @@ const PostCard = ({ post }) => {
       
       const action = liked ? "dislike" : "like";
       const res = await axios.get(
-        `http://localhost:8000/api/v1/post/${post._id}/${action}`,
+        `${API_BASE_URL}/api/v1/post/${post._id}/${action}`,
         { withCredentials: true }
       );
 
@@ -841,7 +841,7 @@ const PostCard = ({ post }) => {
 
     try {
       const res = await axios.post(
-        `http://localhost:8000/api/v1/post/${post._id}/comment`,
+        `${API_BASE_URL}/api/v1/post/${post._id}/comment`,
         { text: commentText },
         {
           headers: { "Content-Type": "application/json" },
@@ -868,7 +868,7 @@ const PostCard = ({ post }) => {
   const handleDeletePost = async () => {
     try {
       const res = await axios.delete(
-        `http://localhost:8000/api/v1/post/delete/${post._id}`,
+        `${API_BASE_URL}/api/v1/post/delete/${post._id}`,
         { withCredentials: true }
       );
 
