@@ -15,13 +15,24 @@ const PRODUCTION_URL = 'https://socialfooddelivery-2.onrender.com';
 const DEVELOPMENT_URL = 'http://localhost:5173';
 const BACKEND_DEV_URL = 'http://localhost:8000';
 
-// CORS origins
+// CORS origins - ensure all possible frontend origins are included
 const ALLOWED_ORIGINS = [
+  // Production URLs
   PRODUCTION_URL,
+  'https://socialfooddelivery-2.onrender.com',
+  'https://socialfooddelivery.onrender.com',
+  'https://*.onrender.com', // Wildcard for any subdomain on render.com
+  
+  // Development URLs
   DEVELOPMENT_URL,
   'http://localhost:3000',   // Common React development port
+  'http://localhost:8000',   // Backend URL
+  'http://localhost:*',      // Any localhost port
+  'http://127.0.0.1:*',      // Any localhost IP port
   BACKEND_DEV_URL,           // Backend URL for same-origin testing
-  // Add any additional origins here if needed
+  
+  // Allow null origin for file:// protocol
+  'null'
 ];
 
 // Base path for API endpoints
@@ -49,7 +60,22 @@ export default {
   cors: {
     ALLOWED_ORIGINS,
     METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    ALLOWED_HEADERS: ['Content-Type', 'Authorization', 'Cookie', 'Accept'],
+    ALLOWED_HEADERS: [
+      'Content-Type', 
+      'Authorization', 
+      'Cookie', 
+      'Accept', 
+      'Cache-Control',
+      'Pragma',
+      'X-Requested-With',
+      'access-token',
+      'auth-token',
+      'x-auth-token',
+      'jwt',
+      'token',
+      'Origin',
+      'X-Client-Origin'
+    ],
     CREDENTIALS: true,
     // Additional CORS settings for cookie handling
     exposedHeaders: ['set-cookie']

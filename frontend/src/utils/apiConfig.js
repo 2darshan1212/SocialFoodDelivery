@@ -2,25 +2,65 @@
  * API Configuration Utility
  * 
  * This utility provides consistent API URLs across the application,
- * automatically detecting whether to use production or development endpoints.
+ * ensuring proper detection of production vs development environments.
+ * Special handling for the render.com deployment.
  */
 
-// Detect if we're in a development environment or if we need to force local backend
+// Environment detection with multiple checks to ensure reliability
+const isRenderDeploy = window.location.hostname.includes('render.com') || 
+                        window.location.hostname === 'socialfooddelivery-2.onrender.com';
+const isLocalhost = window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1';
 const forceLocalBackend = localStorage.getItem('useLocalBackend') === 'true';
-const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const isDevelopment = process.env.NODE_ENV === 'development' || isLocalhost || forceLocalBackend;
 
-console.log('Development mode detected:', isDevelopment);
-console.log('Using local backend:', isLocalhost || forceLocalBackend);
+// Use this for final environment determination
+// Priority: 1. Manual override, 2. Hostname check, 3. NODE_ENV
+const isDevelopment = forceLocalBackend || 
+                      (!isRenderDeploy && isLocalhost) || 
+                      (process.env.NODE_ENV === 'development');
 
-// Set default timeout for API requests (in milliseconds)
-export const API_TIMEOUT = 10000; // 10 seconds
+// Production API URL (Render deployment)
+const PRODUCTION_API_URL = 'https://socialfooddelivery-2.onrender.com/api/v1';
+const PRODUCTION_SERVER_URL = 'https://socialfooddelivery-2.onrender.com';
 
-// Base API URLs - Always use production for now to ensure consistency
-export const API_BASE_URL = "http://localhost:8000/api/v1";
+// Development API URL (localhost)
+const DEVELOPMENT_API_URL = 'http://localhost:8000/api/v1';
+const DEVELOPMENT_SERVER_URL = 'http://localhost:8000';
 
-// Base server URL (without /api/v1)
-export const SERVER_URL = "http://localhost:8000";
+// Set appropriate timeout (longer for production)
+export const API_TIMEOUT = isDevelopment ? 10000 : 30000; // 10s for dev, 30s for production
+
+// ⚠️ IMPORTANT: Production deployment configuration
+// When deploying both frontend and backend to production, ensure we use the production URLs
+// Set forceProdUrls to true if you want to force using production URLs even in development
+const forceProdUrls = localStorage.getItem('forceProdUrls') === 'true';
+const useProductionUrls = isRenderDeploy || !isLocalhost || forceProdUrls;
+
+// Set appropriate URLs based on environment with production as the default for safety
+export const API_BASE_URL = useProductionUrls ? PRODUCTION_API_URL : DEVELOPMENT_API_URL;
+export const SERVER_URL = useProductionUrls ? PRODUCTION_SERVER_URL : DEVELOPMENT_SERVER_URL;
+
+// Allow quick toggling between environments for testing
+window.toggleApiEnvironment = () => {
+  const current = localStorage.getItem('forceProdUrls');
+  const newValue = current !== 'true';
+  localStorage.setItem('forceProdUrls', newValue);
+  console.log(`API environment switched to ${newValue ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  console.log('Please refresh the page for changes to take effect');
+};
+
+// Detailed logging to help with deployment debugging
+console.log('=== API CONFIGURATION ===');
+console.log(`Environment detection:`);
+console.log(`- Is Render deploy: ${isRenderDeploy}`);
+console.log(`- Is localhost: ${isLocalhost}`);
+console.log(`- Force local backend: ${forceLocalBackend}`);
+console.log(`- process.env.NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`Final environment: ${isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'}`);
+console.log(`Using API URL: ${API_BASE_URL}`);
+console.log(`Using Server URL: ${SERVER_URL}`);
+console.log(`API timeout: ${API_TIMEOUT}ms`);
+console.log('=========================');
 
 /**
  * Helper function to build full API endpoint URLs

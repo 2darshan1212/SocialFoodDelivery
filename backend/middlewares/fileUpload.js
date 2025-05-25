@@ -2,6 +2,11 @@ import multer from "multer";
 import path from "path";
 import DatauriParser from "datauri/parser.js";
 import cloudinary from "../cloudinaryConfig.js";
+import jwt from "jsonwebtoken";
+
+// Environment detection
+const isProduction = process.env.NODE_ENV === 'production';
+console.log(`File upload middleware running in ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'} mode`);
 
 // Configure multer for memory storage
 const storage = multer.memoryStorage();
@@ -40,12 +45,57 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Create multer instance with configuration
-export const upload = multer({
+/**
+ * Production-ready multer configuration with custom authorization detection
+ * for both local development and render.com deployment
+ */
+
+// Custom multer storage to check authentication before accepting uploads
+const customMulterHandler = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max file size (increased to accommodate videos)
   fileFilter
 });
+
+// Create enhanced upload middleware that verifies token even in production
+export const upload = {
+  single: (fieldName) => {
+    return [
+      // Middleware to verify authentication even for file uploads in production
+      (req, res, next) => {
+        // For file uploads in production, the token may be in URL parameter
+        // Extract it and set in request headers for authentication middleware
+        const urlToken = req.query._auth || req.query.token;
+        
+        if (urlToken && !req.headers.authorization) {
+          console.log('Using token from URL parameter for file upload');
+          req.headers.authorization = `Bearer ${urlToken}`;
+          
+          // Also set in cookies to maximize compatibility
+          if (!req.cookies) req.cookies = {};
+          if (!req.cookies.token) req.cookies.token = urlToken;
+        }
+        
+        // Check token integrity if present (but don't require it here, let auth middleware do that)
+        if (urlToken) {
+          try {
+            const decoded = jwt.verify(urlToken, process.env.SECRET_KEY || process.env.JWT_SECRET);
+            console.log('Valid upload token from URL for user:', decoded.userId || decoded.id);
+          } catch (err) {
+            console.log('Invalid upload token from URL:', err.message);
+          }
+        }
+        
+        next();
+      },
+      customMulterHandler.single(fieldName)
+    ];
+  },
+  // Add other multer methods (array, fields, etc) as needed
+  array: (fieldName, maxCount) => customMulterHandler.array(fieldName, maxCount),
+  fields: (fields) => customMulterHandler.fields(fields),
+  none: () => customMulterHandler.none()
+};
 
 // Convert buffer to data URI
 const parser = new DatauriParser();

@@ -1,19 +1,49 @@
 // utils/axiosInstance.js
+/**
+ * Enhanced Axios instance for Social Food Delivery
+ * Configured to work reliably in both development and production environments
+ * Specifically optimized for the render.com deployment
+ */
 import axios from "axios";
-import { API_BASE_URL, API_TIMEOUT } from "./apiConfig";
+import { API_BASE_URL, API_TIMEOUT, SERVER_URL } from "./apiConfig";
 
-// Determine environment
-const isDevelopment = process.env.NODE_ENV === 'development' || API_BASE_URL.includes('localhost');
+// Get the current environment information
+const isProduction = !window.location.hostname.includes('localhost');
+const isRenderDeploy = window.location.hostname.includes('render.com') || 
+                        window.location.hostname === 'socialfooddelivery-2.onrender.com';
 
-// Log the API URL being used (helpful for debugging)
-console.log('Using API base URL:', API_BASE_URL);
+// Special case: Production frontend (on render.com) talking to local development backend
+// This handles the case shown in your logs where tokens aren't being transmitted
+const isProdToLocalDev = isProduction && API_BASE_URL.includes('localhost');
 
+if (isProdToLocalDev) {
+  console.log('⚠️ SPECIAL CONFIGURATION: Production frontend connecting to local development backend');
+  console.log('This requires special token handling for cross-origin requests');
+}
+
+// Show detailed connection information in console
+console.log('=== API CONNECTION CONFIG ===');
+console.log('Base URL:', API_BASE_URL);
+console.log('Is Production:', isProduction);
+console.log('Is Render Deploy:', isRenderDeploy);
+console.log('Current Hostname:', window.location.hostname);
+console.log('===========================');
+
+// Create axios instance with production-optimized settings
 const instance = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // This ensures cookies are sent with requests
-  credentials: 'include', // Also include credentials
-  timeout: API_TIMEOUT || 10000, // Default 10 second timeout to prevent hanging requests
+  credentials: 'include', // Also include credentials for fetch API compatibility
+  timeout: API_TIMEOUT || 30000, // 30 second timeout for production to handle slow render.com cold starts
   timeoutErrorMessage: 'Request timeout - server took too long to respond',
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest', // Helps some servers identify AJAX requests
+    'Cache-Control': 'no-cache', // Prevent caching issues
+    'Pragma': 'no-cache',
+    'X-Client-Origin': window.location.origin // Help server identify the client origin
+  }
 });
 
 // Request interceptor for adding auth token
@@ -21,21 +51,80 @@ instance.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   
   if (token) {
-    // Set Authorization header
+    // ALWAYS set both Authorization header AND cookie for all environments
+    // This ensures maximum compatibility with different server configurations
+    
+    // 1. Set Authorization header (JWT Bearer format)
     config.headers.Authorization = `Bearer ${token}`;
     
-    // Also ensure the token is set in cookies for each request
-    // This is needed because the backend middleware checks for tokens in cookies
+    // 2. Set x-auth-token header (alternative format some servers use)
+    config.headers["x-auth-token"] = token;
+    
+    // 3. Add a custom header that won't be stripped by CORS
+    config.headers["access-token"] = token;
+    
+    // Special handling for production frontend talking to local development backend
+    // This addresses the exact issue shown in the logs
+    if (isProdToLocalDev) {
+      // Add even more headers to maximize chances of transmission
+      config.headers["token"] = token;
+      config.headers["auth-token"] = token;
+      config.headers["jwt"] = token;
+      
+      // Always include token in URL for all requests as highest priority method
+      // Cross-origin requests cannot reliably send cookies, so URL params are essential
+      const separator = config.url.includes('?') ? '&' : '?';
+      config.url = `${config.url}${separator}_auth=${token}`;
+      
+      console.log('⚠️ Using special cross-origin auth for production-to-local requests');
+    } else {
+      // Standard handling for same-origin or production-to-production requests
+      // 4. Add token as query parameter (helpful but not always needed in same-origin)
+      const separator = config.url.includes('?') ? '&' : '?';
+      config.url = `${config.url}${separator}_auth=${token}`;
+    }
+    
+    // Log the complete URL and headers for debugging
+    console.log(`Request to: ${config.method.toUpperCase()} ${config.url}`);
+    console.log('Auth headers set:', {
+      Authorization: 'Bearer [token]',
+      'x-auth-token': '[present]',
+      'access-token': '[present]'
+    });
+    
+    // 5. Specifically handle file uploads with special content type
+    if (config.headers['Content-Type'] === 'multipart/form-data') {
+      console.log('File upload detected, ensuring token is included in URL and headers');
+    }
+    
+    // 6. Ensure token is in cookies (the backend checks for tokens in cookies)
     if (typeof document !== 'undefined') {
+      // Configure cookie based on environment
       const protocol = window.location.protocol;
-      if (protocol === 'https:') {
-        document.cookie = `token=${token}; path=/; SameSite=None; Secure`;
+      const isSecure = protocol === 'https:';
+      const domain = window.location.hostname;
+      
+      // Set appropriate SameSite attribute based on environment
+      if (isSecure || isRenderDeploy) {
+        // Production (HTTPS) - cross-origin compatible
+        // For render.com specifically, we need SameSite=None with Secure flag
+        document.cookie = `token=${token}; path=/; SameSite=None; Secure; max-age=86400`;
       } else {
-        // For development on HTTP
+        // Development (HTTP) - more permissive for local testing
         document.cookie = `token=${token}; path=/; SameSite=Lax; max-age=86400`;
       }
       
-      console.log('Set token cookie:', document.cookie);
+      // Also set a backup cookie with no SameSite restriction as fallback
+      document.cookie = `auth_token=${token}; path=/; max-age=86400${isSecure ? '; Secure' : ''}`;
+      
+      // For render.com, set additional cookie formats to maximize compatibility
+      if (isRenderDeploy) {
+        document.cookie = `jwt=${token}; path=/; SameSite=None; Secure; max-age=86400`;
+        // Set cookie specifically for the render.com domain
+        document.cookie = `token=${token}; path=/; domain=.onrender.com; SameSite=None; Secure; max-age=86400`;
+      }
+      
+      console.log('Auth tokens set for request to:', config.url);
     }
   } else {
     console.warn('No token found in localStorage for API request');
@@ -44,34 +133,102 @@ instance.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for handling common errors
+// Response interceptor for handling errors and token refresh
 instance.interceptors.response.use(
+  // For successful responses
   (response) => response,
-  (error) => {
-    // Log errors in development or local environment
-    if (isDevelopment) {
-      console.error('API Error:', error.response?.data || error.message);
+  
+  // For error responses with comprehensive error handling
+  async (error) => {
+    // Capture the request config in case we need to retry
+    const originalRequest = error.config;
+    
+    // Log detailed error info for debugging in production
+    console.log(`API Error: ${error.response?.status || 'Network Error'}`);
+    console.log(`Request URL: ${originalRequest?.url || 'Unknown'}`);
+    console.log(`Method: ${originalRequest?.method?.toUpperCase() || 'Unknown'}`);
+    
+    // Production-specific error handling
+    const isProduction = !window.location.hostname.includes('localhost');
+    const isProdToLocalDev = isProduction && API_BASE_URL.includes('localhost');
+    
+    // Handle special case of production frontend talking to local dev backend
+    if (isProdToLocalDev) {
+      console.log('Production frontend to local backend detected - special handling');
     }
     
-    // Handle specific error cases
-    if (error.code === 'ECONNABORTED') {
-      console.log('Request timeout - server took too long to respond');
-      // Show error toast or notification to user
-    }
-    
-    if (error.response?.status === 401) {
-      // Handle unauthorized access
-      console.log('Unauthorized access - you may need to log in again');
+    // Check if the error is due to an expired token (401 Unauthorized)
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      console.log('Received 401 Unauthorized, attempting to refresh token');
       
-      // Clear invalid tokens
+      // Flag this request as already retried to prevent infinite loops
+      originalRequest._retry = true;
+      
+      try {
+        // Try to get a new token from the refresh-token endpoint
+        const refreshResponse = await axios.post(
+          `${API_BASE_URL.replace('/api/v1', '')}/api/v1/user/refresh-token`,
+          { token: localStorage.getItem('token') },
+          { withCredentials: true }
+        );
+        
+        if (refreshResponse.data?.token) {
+          // Store the new token
+          const newToken = refreshResponse.data.token;
+          localStorage.setItem('token', newToken);
+          
+          // Update headers with the new token
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          originalRequest.headers['x-auth-token'] = newToken;
+          originalRequest.headers['access-token'] = newToken;
+          
+          // If the original URL had a token parameter, update it
+          if (originalRequest.url.includes('_auth=')) {
+            originalRequest.url = originalRequest.url.replace(
+              /_auth=[^&]+/, 
+              `_auth=${newToken}`
+            );
+          } else {
+            // Add token parameter if it wasn't there
+            const separator = originalRequest.url.includes('?') ? '&' : '?';
+            originalRequest.url = `${originalRequest.url}${separator}_auth=${newToken}`;
+          }
+          
+          console.log('Token refreshed successfully, retrying request');
+          return instance(originalRequest);
+        }
+      } catch (refreshError) {
+        console.log('Token refresh failed:', refreshError.message);
+      }
+      
+      // If we reach here, token refresh failed
+      // Clear authentication state
       localStorage.removeItem('token');
-      document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
       
-      // You could redirect to login or dispatch a logout action here
-      // Uncomment the line below to auto-redirect to login
-      // window.location.href = '/login';
+      // Clear all cookies related to authentication
+      document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = 'jwt=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      
+      // If in production, show a friendly message
+      if (isProduction) {
+        alert('Your session has expired. Please login again.');
+      }
+      
+      // Redirect to login page
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 100);
     }
     
+    // For network errors in production, provide a user-friendly message
+    if (!error.response && isProduction) {
+      console.log('Network error in production environment');
+      // Don't show alert to avoid annoying users, just log it
+      console.error('Network error - please check your connection');
+    }
+    
+    // Return the error for further handling
     return Promise.reject(error);
   }
 );

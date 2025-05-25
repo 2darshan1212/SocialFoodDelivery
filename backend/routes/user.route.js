@@ -15,6 +15,7 @@ import {
   getCurrentUser,
   getCurrentUserProfile,
 } from "../controllers/user.controller.js";
+import { refreshToken } from "../controllers/refresh-token.controller.js";
 import isAuthenticated from "../middlewares/isAuthenticated.js";
 import upload from "../middlewares/multer.js";
 import { verifyAdmin } from "../middlewares/verifyAdmin.js";
@@ -24,6 +25,7 @@ const router = express.Router();
 router.route("/register").post(register);
 router.route("/login").post(login);
 router.route("/logout").get(logout);
+router.route("/refresh-token").post(refreshToken);
 router.route("/me").get(isAuthenticated, getCurrentUser);
 router.route("/:id/profile").get(isAuthenticated, getProfile);
 router

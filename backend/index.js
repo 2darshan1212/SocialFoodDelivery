@@ -29,14 +29,56 @@ const PORT = env.PORT;
 const dirname = path.resolve();
 //middlewares
 // Configure CORS to accept requests from both production and development environments
-app.use(
-  cors({
-    origin: env.cors.ALLOWED_ORIGINS,
-    credentials: env.cors.CREDENTIALS,
-    methods: env.cors.METHODS,
-    allowedHeaders: env.cors.ALLOWED_HEADERS,
-  })
-);
+// Enhanced CORS middleware to ensure all requests from the production deployment work correctly
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = env.cors.ALLOWED_ORIGINS;
+  
+  // Check if the request origin is allowed or if using wildcard pattern matching
+  const isAllowed = 
+    allowedOrigins.includes(origin) || 
+    allowedOrigins.some(allowed => {
+      // Handle wildcard patterns like https://*.onrender.com
+      if (allowed.includes('*')) {
+        const pattern = allowed.replace('*', '.*');
+        return new RegExp(pattern).test(origin);
+      }
+      return false;
+    });
+
+  // Set appropriate CORS headers based on origin
+  if (isAllowed) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    console.log(`CORS: Allowed origin: ${origin}`);
+  } else if (origin) {
+    console.log(`CORS: Rejected origin: ${origin}`);
+  }
+
+    // Set other CORS headers
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', env.cors.METHODS.join(', '));
+  
+  // Enhanced header handling to fix the cache-control CORS issue
+  const allowedHeaders = env.cors.ALLOWED_HEADERS.join(', ');
+  res.setHeader('Access-Control-Allow-Headers', allowedHeaders);
+  
+  // Additional exposed headers
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, X-Requested-With, Authorization, set-cookie');
+  
+  // Detailed CORS logging for debugging
+  if (req.method === 'OPTIONS') {
+    console.log('CORS Preflight Request:');
+    console.log(`- Origin: ${req.headers.origin}`);
+    console.log(`- Request Method: ${req.headers['access-control-request-method']}`);
+    console.log(`- Request Headers: ${req.headers['access-control-request-headers']}`);
+    
+    // Extended preflight response for browsers
+    res.setHeader('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
+    return res.status(204).end();
+  }
+  
+  return next();
+});
 
 // Make io available throughout the app
 app.set("io", io);

@@ -16,17 +16,15 @@ import {
 } from "@mui/material";
 import { readFileAsDataURL } from "../../lib/utils";
 import { Loader2 } from "lucide-react";
-import axios from "axios";
 import { toast } from "react-toastify";
 import useGetAllPost from "../../hooks/useGetAllPost";
 import { useDispatch, useSelector } from "react-redux";
 import store from "./../../redux/store";
 import { setPosts } from "../../redux/postSlice";
 import { useStoryProtocol } from "../../providers/StoryProtocolProvider";
-
-// API base URL from environment or default to localhost
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "https://socialfooddelivery-2.onrender.com";
+import axiosInstance from "../../utils/axiosInstance";
+import { API_BASE_URL, getApiUrl } from "../../utils/apiConfig";
+// Import the centralized API configuration
 
 const CreatePost = ({ open, setOpen, refreshPosts }) => {
   const postRef = useRef();
@@ -86,14 +84,15 @@ const CreatePost = ({ open, setOpen, refreshPosts }) => {
     formData.append("ipProtected", enableIpProtection);
 
     try {
-      const res = await axios.post(
-        `${API_BASE_URL}/api/v1/post/addpost`,
+      console.log('Creating post with URL:', getApiUrl('post/addpost'));
+      
+      const res = await axiosInstance.post(
+        '/post/addpost',
         formData,
         {
           headers: {
             "Content-Type": "multipart/form-data",
           },
-          withCredentials: true,
         }
       );
       if (res.data.success) {
@@ -138,8 +137,28 @@ const CreatePost = ({ open, setOpen, refreshPosts }) => {
 
       handleCloseDialog();
     } catch (error) {
-      console.error("Error posting:", error);
-      toast.error(error.response?.data?.message || "Failed to create post");
+      console.error("Error creating post:", error);
+      
+      // Detailed error logging for debugging
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error("Server error response:", {
+          data: error.response.data,
+          status: error.response.status,
+          headers: error.response.headers
+        });
+        toast.error(`Server error: ${error.response.data?.message || error.response.statusText || 'Unknown error'}`);
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error("No response received:", error.request);
+        toast.error("No response from server. Please check your network connection.");
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error("Request setup error:", error.message);
+        toast.error(`Request error: ${error.message}`);
+      }
+      
       setLoading(false);
     }
   };
