@@ -67,6 +67,7 @@ import {
   Hash,
 } from "lucide-react";
 import axios from "axios";
+import { getApiUrl, API_BASE_URL } from "../../utils/apiConfig";
 import { toast } from "react-toastify";
 import "./share.css";
 import { QRCodeSVG as QRCode } from "qrcode.react";
@@ -136,7 +137,7 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
     try {
       setLoading(true);
       const res = await axios.get(
-        "https://socialfooddelivery-2.onrender.com/api/v1/user/suggested-users",
+        getApiUrl('user/suggested-users'),
         { withCredentials: true }
       );
 
@@ -190,7 +191,7 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
       setShareLoading(true);
 
       const res = await axios.post(
-        "https://socialfooddelivery-2.onrender.com/api/v1/share/create",
+        getApiUrl('share/create'),
         {
           postId: post._id,
           sharedWith: "specific",
@@ -238,7 +239,7 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
       setShareLoading(true);
 
       const res = await axios.post(
-        "https://socialfooddelivery-2.onrender.com/api/v1/share/create",
+        getApiUrl('share/create'),
         {
           postId: post._id,
           sharedWith: "followers",
@@ -341,7 +342,7 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
       
       // First create a share record
       const res = await axios.post(
-        "https://socialfooddelivery-2.onrender.com/api/v1/share/create",
+        getApiUrl('share/create'),
         {
           postId: post._id,
           sharedWith: "external",
@@ -533,7 +534,7 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
         // Record analytics for the share
         try {
           await axios.post(
-            "https://socialfooddelivery-2.onrender.com/api/v1/analytics/record",
+            getApiUrl('analytics/record'),
             {
               type: "share",
               postId: post._id,

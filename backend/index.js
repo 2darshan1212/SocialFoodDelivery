@@ -8,6 +8,7 @@ import {
   setupChangeStreams,
   closeChangeStreams,
 } from "./utils/changeStreams.js";
+import env from "./config/environment.js";
 import userRoute from "./routes/user.route.js";
 import postRoute from "./routes/post.route.js";
 import storyRoute from "./routes/storyRoutes.js";
@@ -22,13 +23,16 @@ import path from "path";
 
 dotenv.config({});
 
-const PORT = process.env.PORT || 3000;
+const PORT = env.PORT;
 const dirname = path.resolve();
 //middlewares
+// Configure CORS to accept requests from both production and development environments
 app.use(
   cors({
-    origin: "https://socialfooddelivery-2.onrender.com",
-    credentials: true,
+    origin: env.cors.ALLOWED_ORIGINS,
+    credentials: env.cors.CREDENTIALS,
+    methods: env.cors.METHODS,
+    allowedHeaders: env.cors.ALLOWED_HEADERS,
   })
 );
 
@@ -82,7 +86,7 @@ app.use((err, req, res, next) => {
 
 app.use(express.static(path.join(dirname, "/frontend/dist")));
 app.get("*", (req, res) => {
-  res.sendFile(path.resolve(__dirname, "/frontend/dist/index.html"));
+  res.sendFile(path.resolve(dirname, "/frontend/dist/index.html"));
 });
 
 server.listen(PORT, async () => {

@@ -17,7 +17,9 @@ const useDeviceDetect = () => {
     hasNotifications: false,
     supportsWebShare: false,
     supportsPushAPI: false,
-    supportsDeepLinks: false
+    supportsDeepLinks: false,
+    mightHaveInstagramApp: false,
+    isInstagramBrowser: false
   });
 
   useEffect(() => {
@@ -50,6 +52,13 @@ const useDeviceDetect = () => {
       const isAndroid = /android/i.test(userAgent);
       const isIOS = /iphone|ipad|ipod/i.test(userAgent);
       const supportsDeepLinks = isAndroid || isIOS;
+      
+      // Detect if Instagram app might be installed (we can only guess based on platform)
+      // Real detection requires actual app invocation to see if it responds
+      const mightHaveInstagramApp = isAndroid || isIOS;
+      
+      // Detection for if we're inside the Instagram in-app browser
+      const isInstagramBrowser = /Instagram/.test(userAgent);
 
       setDevice({
         isMobile: isMobileView,
@@ -61,7 +70,9 @@ const useDeviceDetect = () => {
         hasNotifications,
         supportsWebShare: canShare,
         supportsPushAPI,
-        supportsDeepLinks
+        supportsDeepLinks,
+        mightHaveInstagramApp,
+        isInstagramBrowser
       });
     };
 
