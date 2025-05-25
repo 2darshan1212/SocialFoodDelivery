@@ -4,7 +4,10 @@ import cors from "cors";
 import dotenv from "dotenv";
 import connectDB from "./utils/db.js";
 import mongoose from "mongoose";
-import { setupChangeStreams, closeChangeStreams } from "./utils/changeStreams.js";
+import {
+  setupChangeStreams,
+  closeChangeStreams,
+} from "./utils/changeStreams.js";
 import userRoute from "./routes/user.route.js";
 import postRoute from "./routes/post.route.js";
 import storyRoute from "./routes/storyRoutes.js";
@@ -15,16 +18,16 @@ import orderRoute from "./routes/order.route.js";
 import categoryRoute from "./routes/category.route.js";
 import deliveryAgentRoute from "./routes/deliveryAgent.route.js";
 import { app, server, io } from "./socket/socket.js";
-import path from "path"
+import path from "path";
 
 dotenv.config({});
 
 const PORT = process.env.PORT || 3000;
-const dirname=path.resolve();
+const dirname = path.resolve();
 //middlewares
 app.use(
   cors({
-    origin: ["https://socialfooddelivery-2.onrender.com", "http://localhost:5173", "http://localhost:5174"],
+    origin: "https://socialfooddelivery-2.onrender.com",
     credentials: true,
   })
 );
@@ -48,7 +51,6 @@ app.use("/api/v1/category", categoryRoute);
 app.use("/api/v1/delivery", deliveryAgentRoute);
 
 //Routes
-
 
 // API health check
 app.get("/api/health", (req, res) => {
@@ -78,23 +80,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-
-// IMPORTANT: First define all API routes, then serve static files
-// Make sure all API routes are defined before this point
-
-// For production, serve static files from frontend/dist
-const frontendDistPath = path.join(dirname, "frontend", "dist");
-console.log('Frontend static path:', frontendDistPath);
-
-// Serve static files from the frontend build
-app.use(express.static(frontendDistPath));
-
-// The catch-all route should be the LAST route defined
-// This will serve the frontend's index.html for any route not matched by the API
+app.use(express.static(path.join(dirname, "/frontend/dist")));
 app.get("*", (req, res) => {
-  // Add detailed logging to help diagnose any routing issues
-  console.log(`Catch-all route handling request for: ${req.originalUrl}`);
-  res.sendFile(path.join(frontendDistPath, "index.html"));
+  res.sendFile(path.resolve(__dirname, "/frontend/dist/index.html"));
 });
 
 server.listen(PORT, async () => {
@@ -108,48 +96,48 @@ server.listen(PORT, async () => {
 // Graceful shutdown handling
 const gracefulShutdown = async (signal) => {
   console.log(`Received ${signal}. Starting graceful shutdown...`);
-  
+
   try {
     // Close change streams first
-    console.log('Closing change streams...');
+    console.log("Closing change streams...");
     await closeChangeStreams();
-    
+
     // Close the server
-    console.log('Closing HTTP server...');
+    console.log("Closing HTTP server...");
     server.close(() => {
-      console.log('HTTP server closed.');
-      
+      console.log("HTTP server closed.");
+
       // Close database connection
-      console.log('Closing database connection...');
+      console.log("Closing database connection...");
       mongoose.connection.close(false, () => {
-        console.log('Database connection closed.');
+        console.log("Database connection closed.");
         process.exit(0);
       });
     });
-    
+
     // Force close after timeout
     setTimeout(() => {
-      console.error('Forced shutdown after timeout!');
+      console.error("Forced shutdown after timeout!");
       process.exit(1);
     }, 10000);
   } catch (error) {
-    console.error('Error during shutdown:', error);
+    console.error("Error during shutdown:", error);
     process.exit(1);
   }
 };
 
 // Set up signal handlers for graceful shutdown
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  gracefulShutdown('uncaughtException');
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error);
+  gracefulShutdown("uncaughtException");
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  gracefulShutdown('unhandledRejection');
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  gracefulShutdown("unhandledRejection");
 });

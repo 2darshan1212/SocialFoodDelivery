@@ -10,15 +10,18 @@ import {
   useMediaQuery,
   useTheme,
   Badge,
-  Tooltip
+  Tooltip,
+  Divider
 } from "@mui/material";
 import { MessageCircleCode, Menu, X, Paperclip, ImageIcon, FileIcon } from "lucide-react";
 import axios from "axios";
 
 import Messages from "./Messages";
 import ConversationList from "./ConversationList";
+import SuggestedUsers from "../right/SuggestedUsers";
 import { setMessages } from "../../redux/chatSlice";
 import { setSelectedUser } from "../../redux/authSlice";
+import useGetSuggestedUser from "../../hooks/useGetSuggestedUser";
 
 const ChatPage = () => {
   const dispatch = useDispatch();
@@ -27,6 +30,9 @@ const ChatPage = () => {
   const { unreadCounts } = useSelector((store) => store.chat);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  // Get suggested users
+  useGetSuggestedUser();
 
   const [textMessage, setTextMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -384,7 +390,15 @@ const ChatPage = () => {
             </IconButton>
           </div>
           <div className="overflow-auto h-full">
-            <ConversationList onSelectConversation={handleConversationSelected} />
+            <div className="px-2 py-1">
+              <ConversationList onSelectConversation={handleConversationSelected} />
+            </div>
+            
+            <Divider sx={{ my: 2 }} />
+            
+            <div className="px-4 py-2">
+              <SuggestedUsers isConversationTab={true} onMessageClick={toggleDrawer} />
+            </div>
           </div>
         </Drawer>
       )}

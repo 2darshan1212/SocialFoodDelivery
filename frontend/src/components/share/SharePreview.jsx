@@ -1,29 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Box, Paper, Typography, Avatar, Skeleton, Fade, Grow, IconButton } from '@mui/material';
-import { Twitter, Facebook, MessageSquare, Send, ExternalLink, Check, X, AlertCircle } from 'lucide-react';
+import { Twitter, Facebook, MessageSquare, Send, ExternalLink, Check, X, AlertCircle, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
 const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [animateIn, setAnimateIn] = useState(false);
-  const [imageError, setImageError] = useState(false);
-  
+  const [mediaError, setMediaError] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const videoRef = useRef(null);
+
   // Load preview with animation effect
   useEffect(() => {
     if (platform) {
       setIsLoading(true);
-      setImageError(false);
+      setMediaError(false);
+      setIsPlaying(false);
       const timer = setTimeout(() => {
         setIsLoading(false);
         setAnimateIn(true);
       }, 500);
-      
+
       return () => {
         clearTimeout(timer);
         setAnimateIn(false);
       };
     }
   }, [platform]);
-  
+
+  // Stop video when component unmounts or preview changes
+  useEffect(() => {
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+    };
+  }, [platform, post]);
+
   // Handle close/clear preview
   const handleClearPreview = (e) => {
     if (e) {
@@ -34,18 +47,59 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
       onClose();
     }
   };
-  
-  // Handle image error
-  const handleImageError = () => {
-    setImageError(true);
+
+  // Handle media error
+  const handleMediaError = () => {
+    setMediaError(true);
   };
-  
+
+  // Check if the post media is a video
+  const isVideo = () => {
+    if (!post) return false;
+
+    // Check if post has a video property
+    if (post.video) return true;
+
+    // Check if post.mediaType is explicitly set to video
+    if (post.mediaType === 'video') return true;
+
+    // Check if image URL has video extension
+    if (post.image) {
+      const url = post.image.toLowerCase();
+      return url.endsWith('.mp4') || url.endsWith('.webm') ||
+             url.endsWith('.mov') || url.endsWith('.avi') ||
+             url.includes('video');
+    }
+
+    return false;
+  };
+
+  // Handle video playback toggle
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  // Handle video mute toggle
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
+
   // Helper function to truncate text
   const truncateText = (text, length) => {
     if (!text) return '';
     return text.length > length ? text.substring(0, length) + '...' : text;
   };
-  
+
   // Format URL for display
   const formatUrl = (url) => {
     if (!url) return 'foodapp.com';
@@ -56,30 +110,30 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
       return 'foodapp.com';
     }
   };
-  
+
   // Get meta information for the post
   const getMetaInfo = () => {
     if (!post) return 'Food Item';
-    
+
     let categoryInfo = post.category || 'Food';
     const priceInfo = post.price ? `₹${post.price}` : '';
     const ratingInfo = post.rating?.average ? `${post.rating.average.toFixed(1)} ★` : '';
-    
+
     // Format vegetarian status
     if (post.vegetarian) {
       categoryInfo += ' • Vegetarian';
     }
-    
+
     // Format spicy level
     if (post.spicyLevel && post.spicyLevel !== 'none') {
-      const spicyEmoji = post.spicyLevel === 'hot' ? '🔥' : 
+      const spicyEmoji = post.spicyLevel === 'hot' ? '🔥' :
                          post.spicyLevel === 'medium' ? '🌶️' : '•';
       categoryInfo += ` • ${spicyEmoji} ${post.spicyLevel.charAt(0).toUpperCase() + post.spicyLevel.slice(1)}`;
     }
-    
+
     return [categoryInfo, priceInfo, ratingInfo].filter(Boolean).join(' • ');
   };
-  
+
   // Loading state component
   const renderLoading = () => (
     <Paper className="p-4 rounded-lg border border-gray-200">
@@ -100,31 +154,81 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
     </Paper>
   );
 
-  // Fallback image component
-  const renderFallbackImage = () => (
+  // Fallback media component
+  const renderFallbackMedia = () => (
     <div className="bg-gray-100 h-full w-full flex flex-col justify-center items-center">
       <AlertCircle size={24} className="text-gray-400 mb-2" />
       <Typography variant="caption" className="text-gray-500">
-        Image not available
+        Media not available
       </Typography>
+    </div>
+  );
+
+  // Video component with controls
+  const renderPostVideo = () => (
+    <div className="bg-gray-100 h-full w-full flex justify-center items-center relative group">
+      {mediaError || (!post?.video && !post?.image) ? (
+        renderFallbackMedia()
+      ) : (
+        <>
+          <video
+            ref={videoRef}
+            src={post.video || post.image}
+            className="h-full w-full object-cover"
+            onError={handleMediaError}
+            muted={isMuted}
+            loop
+            playsInline
+            onClick={togglePlay}
+          />
+          <div className="absolute bottom-2 left-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex justify-between items-center">
+            <IconButton
+              size="small"
+              className="bg-black/50 text-white hover:bg-black/70"
+              onClick={togglePlay}
+            >
+              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+            </IconButton>
+            <IconButton
+              size="small"
+              className="bg-black/50 text-white hover:bg-black/70"
+              onClick={toggleMute}
+            >
+              {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            </IconButton>
+          </div>
+          {!isPlaying && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="bg-black/30 rounded-full p-3">
+                <Play size={30} className="text-white" />
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 
   // Image component with error handling
   const renderPostImage = () => (
     <div className="bg-gray-100 h-full w-full flex justify-center items-center">
-      {imageError || !post?.image ? (
-        renderFallbackImage()
+      {mediaError || !post?.image ? (
+        renderFallbackMedia()
       ) : (
-        <img 
-          src={post.image} 
-          alt={post?.caption || 'Food post'} 
+        <img
+          src={post.image}
+          alt={post?.caption || 'Food post'}
           className="h-full w-full object-cover"
-          onError={handleImageError}
+          onError={handleMediaError}
         />
       )}
     </div>
   );
+
+  // Media component that renders either image or video
+  const renderPostMedia = () => {
+    return isVideo() ? renderPostVideo() : renderPostImage();
+  };
 
   // Render different preview based on the platform
   const renderPreview = () => {
@@ -140,7 +244,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
         </Paper>
       );
     }
-    
+
     if (!post) {
       return (
         <Paper className="p-8 rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -154,7 +258,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
         </Paper>
       );
     }
-    
+
     switch (platform) {
       case 'twitter':
         return (
@@ -174,7 +278,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
                   </Typography>
                   <Paper className="rounded-lg overflow-hidden border border-gray-200">
                     <div className="h-40 flex justify-center items-center">
-                      {renderPostImage()}
+                      {renderPostMedia()}
                     </div>
                     <Box className="p-3">
                       <Typography variant="caption" className="text-gray-500">{formatUrl(shareLink)}</Typography>
@@ -209,7 +313,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
             </Paper>
           </Grow>
         );
-      
+
       case 'facebook':
         return (
           <Grow in={animateIn} timeout={500}>
@@ -224,11 +328,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
                   </Typography>
                   <Paper className="rounded-lg overflow-hidden border border-gray-200">
                     <div className="bg-gray-100 h-52 flex justify-center items-center">
-                      <img 
-                        src={post?.image} 
-                        alt={post?.caption} 
-                        className="h-full w-full object-cover"
-                      />
+                      {renderPostMedia()}
                     </div>
                     <Box className="p-3">
                       <Typography variant="caption" className="text-gray-500 uppercase">
@@ -266,7 +366,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
             </Paper>
           </Grow>
         );
-      
+
       case 'whatsapp':
         return (
           <Grow in={animateIn} timeout={500}>
@@ -279,11 +379,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
                     {message || `Check out this delicious food post!`}
                   </Typography>
                   <div className="rounded-md overflow-hidden">
-                    <img 
-                      src={post?.image} 
-                      alt={post?.caption} 
-                      className="h-32 w-full object-cover"
-                    />
+                    {renderPostMedia()}
                   </div>
                   <div className="bg-white p-2 mt-1 rounded-md">
                     <Typography variant="caption" className="text-[#128C7E] block font-medium">{truncateText(post?.caption, 50)}</Typography>
@@ -296,7 +392,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
                     </Typography>
                   </div>
                   <Typography variant="caption" className="text-gray-600 text-right mt-1 flex items-center justify-end">
-                    {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 
+                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
                     <Check size={16} className="ml-1 text-[#34B7F1]" />
                     <Check size={16} className="-ml-1 text-[#34B7F1]" />
                   </Typography>
@@ -305,7 +401,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
             </Paper>
           </Grow>
         );
-      
+
       case 'telegram':
         return (
           <Grow in={animateIn} timeout={500}>
@@ -316,11 +412,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
                     {message || `Check out this delicious food post!`}
                   </Typography>
                   <div className="rounded-md overflow-hidden">
-                    <img 
-                      src={post?.image} 
-                      alt={post?.caption} 
-                      className="h-32 w-full object-cover"
-                    />
+                    {renderPostMedia()}
                   </div>
                   <div className="bg-[#f5f5f5] p-2 mt-1 rounded-md">
                     <Typography variant="caption" className="text-[#0088cc] block font-medium">{truncateText(post?.caption, 60)}</Typography>
@@ -332,7 +424,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
                     </Typography>
                   </div>
                   <Typography variant="caption" className="text-gray-400 text-right mt-1 flex items-center justify-end">
-                    {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 
+                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
                     <Check size={14} className="ml-1 text-[#0088cc]" />
                   </Typography>
                 </div>
@@ -340,7 +432,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
             </Paper>
           </Grow>
         );
-        
+
       case 'email':
         return (
           <Grow in={animateIn} timeout={500}>
@@ -358,11 +450,31 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
                     {message || 'Check out this delicious food post!'}
                   </Typography>
                   <div className="border border-gray-200 rounded-md overflow-hidden">
-                    <img 
-                      src={post?.image} 
-                      alt={post?.caption} 
-                      className="h-40 w-full object-cover"
-                    />
+                    {isVideo() ? (
+                      <div className="h-40 w-full relative">
+                        <video
+                          ref={videoRef}
+                          src={post?.video || post?.image}
+                          className="h-40 w-full object-cover"
+                          onError={handleMediaError}
+                          muted={true}
+                          loop
+                          playsInline
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="bg-black/30 rounded-full p-2">
+                            <Play size={24} className="text-white" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <img
+                        src={post?.image}
+                        alt={post?.caption}
+                        className="h-40 w-full object-cover"
+                        onError={handleMediaError}
+                      />
+                    )}
                     <div className="p-3 bg-gray-50">
                       <Typography variant="body2" className="font-medium">{post?.caption}</Typography>
                       <Typography variant="body2" className="text-gray-500 mt-1">
