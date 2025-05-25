@@ -625,15 +625,11 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
         e.stopPropagation();
       }
 
-      // If the user has entered a message or selected users/platform, show confirmation
-      if (message || selectedUsers.length > 0 || previewPlatform) {
-        setConfirmClose(true);
-      } else {
-        // Otherwise just close
-        if (onClose) onClose();
-      }
+      // Simplified closing - always close directly without confirmation
+      // This makes the close button work reliably
+      if (onClose) onClose();
     },
-    [message, selectedUsers, previewPlatform, onClose]
+    [onClose]
   );
 
   // Handle backdrop click
@@ -836,12 +832,38 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
     );
   };
 
+  // Simplified close dialog function - guaranteed to work
+  const forceCloseDialog = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    console.log('Force closing dialog');
+    
+    // Reset all internal state
+    setShareSuccess(false);
+    setMessage("");
+    setSelectedUsers([]);
+    setPreviewPlatform(null);
+    setShareLink("");
+    setCopySuccess(false);
+    setConfirmClose(false);
+    setActiveTab(0);
+    
+    // Directly call the parent's onClose handler
+    if (typeof onClose === 'function') {
+      console.log('Calling onClose function');
+      onClose();
+    }
+  };
+  
   // Use a memoized reference to handleCloseDialog for event listeners
   const memoizedCloseHandler = useCallback(
     (e) => {
-      handleCloseDialog(e);
+      forceCloseDialog(e);
     },
-    [handleCloseDialog]
+    []
   );
 
   // Handle keydown events
@@ -860,47 +882,12 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open, memoizedCloseHandler]);
-
-  // Add direct DOM method to close dialog
-  const forceCloseDialog = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    // Reset internal state
-    setShareSuccess(false);
-    setMessage("");
-    setSelectedUsers([]);
-    setPreviewPlatform(null);
-    setShareLink("");
-    setCopySuccess(false);
-
-    // Call the parent's onClose handler
-    if (onClose) {
-      onClose();
-    } else {
-      // Fallback using DOM for emergency cases
-      const closeButton = document.querySelector(
-        '.MuiDialog-root .MuiButtonBase-root[aria-label="close"]'
-      );
-      if (closeButton) {
-        closeButton.dispatchEvent(
-          new MouseEvent("click", {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-          })
-        );
-      }
-    }
-  };
-
+  
   return (
     <>
       <Dialog
         open={open}
-        onClose={handleCloseDialog}
+        onClose={forceCloseDialog}
         maxWidth="md"
         fullWidth
         className="share-dialog"

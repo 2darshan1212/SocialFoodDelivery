@@ -1218,6 +1218,8 @@ const PostCard = ({ post }) => {
     setRatingDetailsOpen(true);
   };
 
+  // Function declarations will be added later in the file
+
   // Render rating section
   const renderRating = () => {
     return (
@@ -1310,7 +1312,7 @@ const PostCard = ({ post }) => {
       </div>
 
       <div
-        className="w-full h-64 sm:h-72 md:h-80 lg:h-96 bg-gray-100 flex items-center justify-center overflow-hidden cursor-pointer"
+        className="w-full h-96 sm:h-80 md:h-80 lg:h-96 bg-gray-100 flex items-center justify-center overflow-hidden cursor-pointer"
         onClick={handleViewPostDetail}
       >
         {post.mediaType === "video" ? (
@@ -1415,38 +1417,85 @@ const PostCard = ({ post }) => {
           )}
         </div>
 
-        {/* Mobile view - action buttons that appear when 3 dots clicked */}
+        {/* Mobile view - action buttons and stats that appear when 3 dots clicked */}
         {showMobileActions && (
-          <div className="flex items-center gap-6 text-gray-600 text-xl mb-3 md:hidden animate-fade-in">
-            <button onClick={handleLike} className="transition cursor-pointer">
-              {liked ? <FcLike className="text-2xl" /> : <FiHeart />}
-            </button>
+          <div className="md:hidden animate-fade-in">
+            {/* Action buttons */}
+            <div className="flex items-center gap-6 text-gray-600 text-xl mb-3">
+              <div className="flex flex-col items-center">
+                <button onClick={handleLike} className="transition cursor-pointer">
+                  {liked ? <FcLike className="text-2xl" /> : <FiHeart />}
+                </button>
+                <span className="text-xs mt-1 font-medium">{likeCount}</span>
+              </div>
 
-            <button
-              onClick={() => {
-                dispatch(setSelectedPost(post));
-                setCommentDialogOpen(true);
-              }}
-              className="hover:text-blue-500 transition cursor-pointer"
-            >
-              <FiMessageCircle />
-            </button>
+              <div className="flex flex-col items-center">
+                <button
+                  onClick={() => {
+                    dispatch(setSelectedPost(post));
+                    setCommentDialogOpen(true);
+                  }}
+                  className="hover:text-blue-500 transition cursor-pointer"
+                >
+                  <FiMessageCircle />
+                </button>
+                <span className="text-xs mt-1 font-medium">{comments.length || 0}</span>
+              </div>
 
-            <button
-              onClick={handleShare}
-              className="hover:text-green-500 transition cursor-pointer"
-            >
-              <FiShare />
-            </button>
+              <div className="flex flex-col items-center">
+                <button
+                  onClick={handleShare}
+                  className="hover:text-green-500 transition cursor-pointer"
+                >
+                  <FiShare />
+                </button>
+                <span className="text-xs mt-1 font-medium">{shareCount}</span>
+              </div>
 
-            <button
-              onClick={handleBookmark}
-              className={`transition cursor-pointer ${
-                bookmarked ? "text-blue-500" : ""
-              }`}
-            >
-              <FiBookmark />
-            </button>
+              {/* <div className="flex flex-col items-center">
+                <button
+                  onClick={handleBookmark}
+                  className={`transition cursor-pointer ${
+                    bookmarked ? "text-blue-500" : ""
+                  }`}
+                >
+                  <FiBookmark />
+                </button>
+              </div> */}
+            </div>
+
+            {comments.length > 0 && (
+          <span
+            onClick={() => {
+              dispatch(setSelectedPost(post));
+              setCommentDialogOpen(true);
+            }}
+            className="hover:text-blue-300 cursor-pointer"
+          >
+            View all {comments.length} comments
+          </span>
+        )}
+            
+            {/* Comment input box */}
+            <div className="mt-3 mb-4 w-full">
+              <div className="flex items-center gap-2">
+                
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  placeholder="Add a comment..."
+                  className="flex-1 bg-gray-100 rounded-full px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-orange-400"
+                />
+                <button
+                  onClick={handleComment}
+                  disabled={!commentText.trim()}
+                  className={`text-orange-500 text-sm font-medium ${!commentText.trim() ? 'opacity-50' : 'hover:text-orange-600'}`}
+                >
+                  Post
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1483,23 +1532,13 @@ const PostCard = ({ post }) => {
           </button>
         </div>
 
-        <div className="flex items-center gap-4 my-2 text-sm">
+        {/* <div className="flex items-center gap-4 my-2 text-sm">
           <span className="font-medium">{likeCount} likes</span>
           <span className="font-medium">{shareCount} shares</span>
-        </div>
+        </div> */}
 
-        {comments.length > 0 && (
-          <span
-            onClick={() => {
-              dispatch(setSelectedPost(post));
-              setCommentDialogOpen(true);
-            }}
-            className="hover:text-blue-300 cursor-pointer"
-          >
-            View all {comments.length} comments
-          </span>
-        )}
-
+        
+{/* 
         <CommentDialog
           open={commentDialogOpen}
           setOpen={setCommentDialogOpen}
@@ -1511,9 +1550,9 @@ const PostCard = ({ post }) => {
           onClose={() => setShareDialogOpen(false)}
           post={post}
           onShareSuccess={handleShareSuccess}
-        />
+        /> */}
 
-        <div className="flex item-center justify-between mt-2">
+        {/* <div className="flex item-center justify-between mt-2">
           <input
             type="text"
             placeholder="Add a comment..."
@@ -1529,7 +1568,7 @@ const PostCard = ({ post }) => {
               Post
             </span>
           )}
-        </div>
+        </div> */}
 
         {/* Mobile rating section - only shows when 3 dots clicked */}
         {showMobileActions && (

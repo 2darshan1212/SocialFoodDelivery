@@ -26,7 +26,8 @@ import {
   Play, 
   Pause, 
   Volume2, 
-  VolumeX 
+  VolumeX,
+  MoreVertical
 } from "lucide-react";
 import axios from "axios";
 
@@ -223,17 +224,48 @@ const ChatPage = () => {
       formData.append('textMessage', textMessage.trim() || '');
       
       if (selectedFile) {
-        formData.append('file', selectedFile);
-        if (fileType) {
-          formData.append('fileType', fileType); // Send file type to backend
+        // Special handling for video files
+        if (fileType === 'video') {
+          // Ensure proper content type and naming
+          const videoExtension = selectedFile.name.split('.').pop().toLowerCase();
+          const validExtensions = ['mp4', 'mov', 'avi', 'webm'];
+          
+          // Check if it's a supported video format
+          if (!validExtensions.includes(videoExtension)) {
+            toast.error('Unsupported video format. Please use MP4, MOV, AVI or WEBM.');
+            setIsSending(false);
+            setIsUploading(false);
+            return;
+          }
+          
+          // Ensure file size is reasonable (limit to 25MB for videos)
+          const maxVideoSize = 25 * 1024 * 1024; // 25MB in bytes
+          if (selectedFile.size > maxVideoSize) {
+            toast.error('Video file is too large. Maximum size is 25MB.');
+            setIsSending(false);
+            setIsUploading(false);
+            return;
+          }
+          
+          console.log(`Processing video file: ${selectedFile.name} (${formatFileSize(selectedFile.size)})`);
         }
+        
+        // Add file to form data
+        formData.append('file', selectedFile);
+        formData.append('fileType', fileType || 'document'); // Ensure fileType is always sent
+        formData.append('fileName', selectedFile.name); // Send original filename
+        
         console.log("Appending file to form data:", selectedFile.name, fileType);
       }
       
       console.log("Sending message to:", receiverId);
       
+      // More verbose server URL and error handling
+      const apiUrl = `https://socialfooddelivery-2.onrender.com/api/v1/message/send/${receiverId}`;
+      console.log(`Sending request to: ${apiUrl}`);
+      
       const res = await axios.post(
-        `https://socialfooddelivery-2.onrender.com/api/v1/message/send/${receiverId}`,
+        apiUrl,
         formData,
         {
           headers: { 
@@ -244,7 +276,9 @@ const ChatPage = () => {
             const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
             setUploadProgress(percentCompleted);
             console.log(`Upload progress: ${percentCompleted}%`);
-          }
+          },
+          // Increase timeout for large files
+          timeout: 60000, // 60 seconds timeout
         }
       );
 
@@ -260,9 +294,29 @@ const ChatPage = () => {
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }, 100);
+        
+        // Show success message
+        if (selectedFile && fileType === 'video') {
+          toast.success('Video sent successfully!');
+        }
       }
     } catch (error) {
       console.error("Failed to send message:", error);
+      
+      // More descriptive error messages
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        console.error("Server error response:", error.response.data);
+        toast.error(`Server error: ${error.response.data.message || 'Failed to send file'}`);
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error("No response received:", error.request);
+        toast.error('No response from server. Check your internet connection.');
+      } else {
+        // Something happened in setting up the request
+        toast.error(`Error: ${error.message || 'Failed to send message'}`);
+      }
+      
     } finally {
       setIsSending(false);
       setIsUploading(false);
@@ -422,48 +476,78 @@ const ChatPage = () => {
                 onChange={handleFileChange}
                 ref={fileInputRef}
               />
-              <div className="flex gap-1">
-                <Tooltip title="Attach image">
+              
+              {/* Three dots menu for attachments */}
+              <div className="relative">
+                <Tooltip title="Attachment options">
                   <IconButton 
                     color="primary" 
-                    onClick={() => {
-                      fileInputRef.current.setAttribute('accept', 'image/*');
-                      fileInputRef.current.click();
+                    onClick={(e) => {
+                      const menu = document.getElementById('attachment-menu');
+                      if (menu.style.display === 'flex') {
+                        menu.style.display = 'none';
+                      } else {
+                        menu.style.display = 'flex';
+                      }
                     }}
                     disabled={isSending}
                     size="small"
                   >
-                    <ImageLucide size={18} />
+                    <MoreVertical size={20} />
                   </IconButton>
                 </Tooltip>
                 
-                <Tooltip title="Attach video">
-                  <IconButton 
-                    color="primary" 
-                    onClick={() => {
-                      fileInputRef.current.setAttribute('accept', 'video/*');
-                      fileInputRef.current.click();
-                    }}
-                    disabled={isSending}
-                    size="small"
-                  >
-                    <VideoIcon size={18} />
-                  </IconButton>
-                </Tooltip>
-                
-                <Tooltip title="Attach file">
-                  <IconButton 
-                    color="primary" 
-                    onClick={() => {
-                      fileInputRef.current.setAttribute('accept', '*');
-                      fileInputRef.current.click();
-                    }}
-                    disabled={isSending}
-                    size="small"
-                  >
-                    <Paperclip size={18} />
-                  </IconButton>
-                </Tooltip>
+                {/* Attachment menu that appears when 3 dots is clicked */}
+                <div 
+                  id="attachment-menu" 
+                  className="absolute bottom-10 left-0 bg-white shadow-lg rounded-lg p-2 z-10 flex-col gap-2" 
+                  style={{display: 'none'}}
+                >
+                  <Tooltip title="Attach image">
+                    <IconButton 
+                      color="primary" 
+                      onClick={() => {
+                        fileInputRef.current.setAttribute('accept', 'image/*');
+                        fileInputRef.current.click();
+                        document.getElementById('attachment-menu').style.display = 'none';
+                      }}
+                      disabled={isSending}
+                      size="small"
+                    >
+                      <ImageLucide size={20} />
+                    </IconButton>
+                  </Tooltip>
+                  
+                  <Tooltip title="Attach video">
+                    <IconButton 
+                      color="primary" 
+                      onClick={() => {
+                        fileInputRef.current.setAttribute('accept', 'video/*');
+                        fileInputRef.current.click();
+                        document.getElementById('attachment-menu').style.display = 'none';
+                      }}
+                      disabled={isSending}
+                      size="small"
+                    >
+                      <VideoIcon size={20} />
+                    </IconButton>
+                  </Tooltip>
+                  
+                  <Tooltip title="Attach file">
+                    <IconButton 
+                      color="primary" 
+                      onClick={() => {
+                        fileInputRef.current.setAttribute('accept', '*');
+                        fileInputRef.current.click();
+                        document.getElementById('attachment-menu').style.display = 'none';
+                      }}
+                      disabled={isSending}
+                      size="small"
+                    >
+                      <Paperclip size={20} />
+                    </IconButton>
+                  </Tooltip>
+                </div>
               </div>
               
               <input

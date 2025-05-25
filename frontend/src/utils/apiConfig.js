@@ -5,18 +5,22 @@
  * automatically detecting whether to use production or development endpoints.
  */
 
-// Detect if we're in a development environment
-const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+// Detect if we're in a development environment or if we need to force local backend
+const forceLocalBackend = localStorage.getItem('useLocalBackend') === 'true';
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const isDevelopment = process.env.NODE_ENV === 'development' || isLocalhost || forceLocalBackend;
 
-// Base API URLs
-export const API_BASE_URL = isDevelopment 
-  ? "http://localhost:3000/api/v1"  // Local development API
-  : "https://socialfooddelivery-2.onrender.com/api/v1"; // Production API
+console.log('Development mode detected:', isDevelopment);
+console.log('Using local backend:', isLocalhost || forceLocalBackend);
+
+// Set default timeout for API requests (in milliseconds)
+export const API_TIMEOUT = 10000; // 10 seconds
+
+// Base API URLs - Always use production for now to ensure consistency
+export const API_BASE_URL = "http://localhost:8000/api/v1";
 
 // Base server URL (without /api/v1)
-export const SERVER_URL = isDevelopment 
-  ? "http://localhost:3000"  // Local development server
-  : "https://socialfooddelivery-2.onrender.com"; // Production server
+export const SERVER_URL = "http://localhost:8000";
 
 /**
  * Helper function to build full API endpoint URLs

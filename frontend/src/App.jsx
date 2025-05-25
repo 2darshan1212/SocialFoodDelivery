@@ -2,11 +2,14 @@ import React, { useEffect } from "react";
 import SolanaWalletProvider from "./components/wallet/SolanaWalletProvider";
 import StoryProtocolProvider from "./providers/StoryProtocolProvider";
 import { SocketProvider } from "./context/SocketContext.jsx";
+import AuthProviderWithRouter from "./components/Auth/AuthProviderWithRouter";
+import ProtectedRoute from "./components/Auth/ProtectedRoute";
+import { createBrowserRouter, RouterProvider, Navigate, Outlet } from "react-router-dom";
 import Signup from "./components/Auth/Signup";
-import RequireAuth from "./components/Auth/RequireAuth";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import AuthTest from "./pages/AuthTest";
 import MainLayout from "./components/mainlayout/MainLayout";
 import Login from "./components/Auth/Login";
+import LoginTest from "./pages/LoginTest";
 import Feeds from "./components/feeds/Feeds";
 import Profile from "./components/profile/Profile";
 import EditProfile from "./components/editProfile/EditProfile";
@@ -47,136 +50,239 @@ import DeliveryHistory from "./components/delivery/DeliveryHistory";
 import DeliveryProfile from "./components/delivery/Profile";
 import DeliveryAgentsManagement from "./components/admin/DeliveryAgentsManagement";
 
+// Root layout that wraps the auth provider
+const RootLayout = () => {
+  return (
+    <AuthProviderWithRouter>
+      <Outlet />
+    </AuthProviderWithRouter>
+  );
+};
+
+// Create browser router configuration
 const browserRouter = createBrowserRouter([
+  // Root route with AuthProviderWithRouter for proper navigation
   {
     path: "/",
-    element: <RequireAuth><MainLayout /></RequireAuth>,
+    element: <RootLayout />,
     children: [
+      // Public routes that don't require authentication
       {
-        path: "/",
-        element: <Feeds />,
+        path: "signup",
+        element: <Signup />
       },
       {
-        path: "/category/:category",
-        element: <CategoryPage />,
+        path: "login",
+        element: <Login />
       },
       {
-        path: "/post/:id",
-        element: <PostDetail />,
+        path: "login-test",
+        element: <LoginTest />
       },
       {
-        path: "/favorites",
-        element: <FavoritesPage />,
+        path: "auth-test",
+        element: <AuthTest />
+      },
+      
+      // Public main layout routes
+      {
+        path: "",
+        element: <MainLayout />,
+        children: [
+          {
+            path: "",
+            element: <Feeds />
+          },
+          {
+            path: "category/:category",
+            element: <CategoryPage />
+          },
+          {
+            path: "post/:id",
+            element: <PostDetail />
+          }
+        ]
+      },
+      
+      // Protected routes with original URL paths
+      // Profile routes
+      {
+        path: "profile/:id",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <Profile />
+          }
+        ]
       },
       {
-        path: "/orders/*",
-        element: <OrdersPage />,
+        path: "profile/:id/account/edit",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <EditProfile />
+          }
+        ]
       },
-    ],
-  },
-  {
-    path: "/signup",
-    element: <Signup />,
-  },
-  {
-    path: "/login",
-    element: <Login />,
-  },
-  {
-    path: "/profile/:id",
-    element: <RequireAuth><Profile /></RequireAuth>,
-  },
-  {
-    path: "profile/:id/account/edit",
-    element: <RequireAuth><EditProfile /></RequireAuth>,
-  },
-  {
-    path: "/cartPage",
-    element: <RequireAuth><Cart /></RequireAuth>,
-  },
-  {
-    path: "/chat",
-    element: <RequireAuth><ChatLayout /></RequireAuth>,
-    children: [
+      
+      // Cart and favorites
       {
-        path: "/chat/chatpage",
-        element: <ChatPage />,
-      },
-    ],
-  },
-  {
-    path: "/shared/:shareId",
-    element: <RequireAuth><SharedPost /></RequireAuth>,
-  },
-  // Admin Routes
-  {
-    path: "/admin",
-    element: <RequireAuth><AdminLayout /></RequireAuth>,
-    children: [
-      {
-        path: "dashboard",
-        element: <AdminDashboard />,
+        path: "cartPage",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <Cart />
+          }
+        ]
       },
       {
-        path: "orders",
-        element: <OrdersManagement />,
+        path: "favorites",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <FavoritesPage />
+          }
+        ]
       },
+      
+      // Orders
       {
-        path: "categories",
-        element: <CategoriesManagement />,
+        path: "orders/*",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <OrdersPage />
+          }
+        ]
       },
+      
+      // Shared posts
       {
-        path: "users",
-        element: <UsersManagement />,
+        path: "shared/:shareId",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <SharedPost />
+          }
+        ]
       },
+      
+      // Chat routes
       {
-        path: "delivery-agents",
-        element: <DeliveryAgentsManagement />,
+        path: "chat",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <ChatLayout />,
+            children: [
+              {
+                path: "chatpage",
+                element: <ChatPage />
+              }
+            ]
+          }
+        ]
       },
+      
+      // Admin routes
       {
-        path: "check",
-        element: <AdminCheck />,
+        path: "admin",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <AdminLayout />,
+            children: [
+              {
+                path: "dashboard",
+                element: <AdminDashboard />
+              },
+              {
+                path: "orders",
+                element: <OrdersManagement />
+              },
+              {
+                path: "categories",
+                element: <CategoriesManagement />
+              },
+              {
+                path: "users",
+                element: <UsersManagement />
+              },
+              {
+                path: "delivery-agents",
+                element: <DeliveryAgentsManagement />
+              },
+              {
+                path: "check",
+                element: <AdminCheck />
+              }
+            ]
+          }
+        ]
       },
-    ],
-  },
-  // Admin debug route
-  {
-    path: "/admin-check",
-    element: <RequireAuth><AdminCheck /></RequireAuth>,
-  },
-  // Delivery Routes
-  {
-    path: "/deliver",
-    element: <RequireAuth><DeliveryLayout /></RequireAuth>,
-    children: [
+      
+      // Admin debug route
       {
-        path: "dashboard",
-        element: <Dashboard />,
+        path: "admin-check",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <AdminCheck />
+          }
+        ]
       },
+      
+      // Delivery routes
       {
-        path: "register",
-        element: <Register />,
-      },
-      {
-        path: "nearby-orders",
-        element: <NearbyOrders />,
-      },
-      {
-        path: "my-deliveries",
-        element: <MyDeliveries />,
-      },
-      {
-        path: "history",
-        element: <DeliveryHistory />,
-      },
-      {
-        path: "profile",
-        element: <DeliveryProfile />,
-      },
-    ],
-  },
+        path: "deliver",
+        element: <ProtectedRoute />,
+        children: [
+          {
+            path: "",
+            element: <DeliveryLayout />,
+            children: [
+              {
+                path: "dashboard",
+                element: <Dashboard />
+              },
+              {
+                path: "register",
+                element: <Register />
+              },
+              {
+                path: "nearby-orders",
+                element: <NearbyOrders />
+              },
+              {
+                path: "my-deliveries",
+                element: <MyDeliveries />
+              },
+              {
+                path: "history",
+                element: <DeliveryHistory />
+              },
+              {
+                path: "profile",
+                element: <DeliveryProfile />
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
 ]);
 
+// Main App component
 const App = () => {
   const { user } = useSelector((store) => store.auth);
   const { connected } = useSelector((store) => store.socket);
@@ -194,48 +300,11 @@ const App = () => {
     if (userId) {
       dispatch(migrateCart(userId));
       
-      // Force fetch orders when user changes (clear any previous user's orders)
-      dispatch({ type: 'cart/orders/reset' });
+      // Also fetch user's orders
       dispatch(fetchOrders());
-    } else {
-      // Clear orders when user logs out
-      dispatch({ type: 'cart/orders/reset' });
     }
-  }, [user?._id, dispatch]);
+  }, [user, dispatch]);
   
-  // Detect and fix corrupted chat state
-  useEffect(() => {
-    // Check if unreadCounts is undefined, which indicates a corrupted state
-    if (unreadCounts === undefined) {
-      console.warn('Found corrupted chat state, attempting to fix...');
-      
-      // Try to repair the localStorage data
-      try {
-        // Get the current persisted state
-        const persistedState = JSON.parse(localStorage.getItem('persist:chat'));
-        if (persistedState) {
-          // Ensure unreadCounts exists in the state
-          const chatState = JSON.parse(persistedState);
-          if (!chatState.unreadCounts) {
-            chatState.unreadCounts = {};
-            persistedState.chat = JSON.stringify(chatState);
-            localStorage.setItem('persist:chat', JSON.stringify(persistedState));
-            console.log('Fixed corrupted chat state');
-            
-            // Force a page reload to apply the fixed state
-            window.location.reload();
-          }
-        }
-      } catch (error) {
-        console.error('Error fixing corrupted state, clearing chat state:', error);
-        // If unable to repair, clear the chat state completely
-        localStorage.removeItem('persist:chat');
-        window.location.reload();
-      }
-    }
-  }, [unreadCounts]);
-  
-  // Fetch notifications when user is logged in
   useEffect(() => {
     if (user) {
       dispatch(fetchNotifications());
@@ -376,13 +445,16 @@ const App = () => {
   }, [user, dispatch]);
   
   return (
-    <StoryProtocolProvider>
+    <SocketProvider>
       <SolanaWalletProvider>
-        <SocketProvider>
-          <RouterProvider router={browserRouter} />
-        </SocketProvider>
+        <StoryProtocolProvider>
+          <RouterProvider 
+            router={browserRouter}
+            fallbackElement={<div>Loading...</div>}
+          />
+        </StoryProtocolProvider>
       </SolanaWalletProvider>
-    </StoryProtocolProvider>
+    </SocketProvider>
   );
 };
 

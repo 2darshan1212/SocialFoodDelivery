@@ -1,13 +1,13 @@
 import axios from "axios";
+import { API_BASE_URL } from "../utils/apiConfig";
+import axiosInstance from "../utils/axiosInstance";
 
-const API_BASE_URL = "https://socialfooddelivery-2.onrender.com";
+// We'll use the centralized axiosInstance instead of creating a new one
+// This ensures consistent configuration across the application
+const api = axiosInstance;
 
-// Create axios instance with credentials and timeout
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
-  timeout: 10000, // 10 second timeout
-});
+// Log the API URL being used for delivery service
+console.log('Delivery service using API base URL:', API_BASE_URL);
 
 // Add request interceptor to include auth token
 api.interceptors.request.use(
@@ -58,7 +58,7 @@ api.interceptors.response.use(
 // Register as a delivery agent
 export const registerAsDeliveryAgent = async (data) => {
   try {
-    const response = await api.post("/api/v1/delivery/register", data);
+    const response = await api.post("/delivery/register", data);
     return response.data;
   } catch (error) {
     console.error("Failed to register as delivery agent:", error);
@@ -69,7 +69,7 @@ export const registerAsDeliveryAgent = async (data) => {
 // Get delivery agent profile
 export const getAgentProfile = async () => {
   try {
-    const response = await api.get("/api/v1/delivery/profile");
+    const response = await api.get("/delivery/profile");
     return response.data;
   } catch (error) {
     console.error("Failed to fetch delivery agent profile:", error);
@@ -80,7 +80,7 @@ export const getAgentProfile = async () => {
 // Get delivery history
 export const getDeliveryHistory = async () => {
   try {
-    const response = await api.get("/api/v1/delivery/history");
+    const response = await api.get("/delivery/history");
     return response.data;
   } catch (error) {
     console.error("Failed to fetch delivery history:", error);
@@ -91,7 +91,7 @@ export const getDeliveryHistory = async () => {
 // Update availability status
 export const updateAvailability = async (isAvailable) => {
   try {
-    const response = await api.put("/api/v1/delivery/availability", {
+    const response = await api.put("/delivery/availability", {
       isAvailable,
     });
     return response.data;
@@ -126,7 +126,7 @@ export const updateLocation = async (longitude, latitude) => {
       `Updating location: [${formattedLongitude}, ${formattedLatitude}]`
     );
 
-    const response = await api.put("/api/v1/delivery/location", {
+    const response = await api.put("/delivery/location", {
       longitude: formattedLongitude,
       latitude: formattedLatitude,
     });
@@ -150,7 +150,7 @@ export const getNearbyOrders = async () => {
   try {
     // Added includeAllConfirmed=true to fetch all confirmed orders regardless of distance
     const response = await api.get(
-      "/api/v1/delivery/nearby-orders?includeAllConfirmed=true"
+      "/delivery/nearby-orders?includeAllConfirmed=true"
     );
     return response.data;
   } catch (error) {
@@ -162,7 +162,7 @@ export const getNearbyOrders = async () => {
 // Accept an order for delivery
 export const acceptOrder = async (orderId) => {
   try {
-    const response = await api.post(`/api/v1/delivery/accept/${orderId}`);
+    const response = await api.post(`/delivery/accept/${orderId}`);
     return response.data;
   } catch (error) {
     console.error("Failed to accept order:", error);
@@ -173,7 +173,7 @@ export const acceptOrder = async (orderId) => {
 // Reject an order (don't want to deliver it)
 export const rejectOrder = async (orderId) => {
   try {
-    const response = await api.post(`/api/v1/delivery/reject/${orderId}`);
+    const response = await api.post(`/delivery/reject/${orderId}`);
     return response.data;
   } catch (error) {
     console.error("Failed to reject order:", error);
@@ -184,7 +184,7 @@ export const rejectOrder = async (orderId) => {
 // Mark an order as delivered
 export const completeDelivery = async (orderId) => {
   try {
-    const response = await api.put(`/api/v1/delivery/complete/${orderId}`);
+    const response = await api.put(`/delivery/complete/${orderId}`);
     return response.data;
   } catch (error) {
     console.error("Failed to complete delivery:", error);
@@ -195,7 +195,7 @@ export const completeDelivery = async (orderId) => {
 // Admin: Get all delivery agents
 export const getAllAgents = async () => {
   try {
-    const response = await api.get("/api/v1/delivery/admin/all");
+    const response = await api.get("/delivery/admin/all");
     return response.data;
   } catch (error) {
     console.error("Failed to fetch all delivery agents:", error);
@@ -206,7 +206,7 @@ export const getAllAgents = async () => {
 // Admin: Verify delivery agent
 export const verifyDeliveryAgent = async (agentId, isVerified) => {
   try {
-    const response = await api.put(`/api/v1/delivery/admin/verify/${agentId}`, {
+    const response = await api.put(`/delivery/admin/verify/${agentId}`, {
       isVerified,
     });
     return response.data;
@@ -219,7 +219,7 @@ export const verifyDeliveryAgent = async (agentId, isVerified) => {
 // Get orders with 'confirmed' status that need delivery
 export const getConfirmedOrders = async () => {
   try {
-    const response = await api.get("/api/v1/delivery/confirmed-orders");
+    const response = await api.get("/delivery/confirmed-orders");
     return response.data;
   } catch (error) {
     console.error("Failed to fetch confirmed orders:", error);

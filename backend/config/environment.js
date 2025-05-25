@@ -13,12 +13,14 @@ const isProduction = NODE_ENV === 'production';
 // Base URLs
 const PRODUCTION_URL = 'https://socialfooddelivery-2.onrender.com';
 const DEVELOPMENT_URL = 'http://localhost:5173';
-const BACKEND_DEV_URL = 'http://localhost:3000';
+const BACKEND_DEV_URL = 'http://localhost:8000';
 
 // CORS origins
 const ALLOWED_ORIGINS = [
   PRODUCTION_URL,
   DEVELOPMENT_URL,
+  'http://localhost:3000',   // Common React development port
+  BACKEND_DEV_URL,           // Backend URL for same-origin testing
   // Add any additional origins here if needed
 ];
 
@@ -33,7 +35,7 @@ export default {
   isProduction,
   
   // Server configuration
-  PORT: process.env.PORT || 3000,
+  PORT: process.env.PORT || 8000,
   
   // URLs
   PRODUCTION_URL,
@@ -47,8 +49,10 @@ export default {
   cors: {
     ALLOWED_ORIGINS,
     METHODS: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    ALLOWED_HEADERS: ['Content-Type', 'Authorization'],
-    CREDENTIALS: true
+    ALLOWED_HEADERS: ['Content-Type', 'Authorization', 'Cookie', 'Accept'],
+    CREDENTIALS: true,
+    // Additional CORS settings for cookie handling
+    exposedHeaders: ['set-cookie']
   },
   
   // Other environment-specific configurations

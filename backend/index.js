@@ -18,6 +18,8 @@ import shareRoute from "./routes/share.route.js";
 import orderRoute from "./routes/order.route.js";
 import categoryRoute from "./routes/category.route.js";
 import deliveryAgentRoute from "./routes/deliveryAgent.route.js";
+import testRoute from "./routes/test.route.js";
+import authDebugRoute from "./routes/authDebug.route.js";
 import { app, server, io } from "./socket/socket.js";
 import path from "path";
 
@@ -53,6 +55,8 @@ app.use("/api/v1/share", shareRoute);
 app.use("/api/v1/orders", orderRoute);
 app.use("/api/v1/category", categoryRoute);
 app.use("/api/v1/delivery", deliveryAgentRoute);
+app.use("/api/v1/test", testRoute);
+app.use("/api/v1/auth-debug", authDebugRoute);
 
 //Routes
 

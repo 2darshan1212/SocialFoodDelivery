@@ -1,13 +1,13 @@
 import axios from "axios";
+import { API_BASE_URL } from "../utils/apiConfig";
+import axiosInstance from "../utils/axiosInstance";
 
-const API_BASE_URL = "https://socialfooddelivery-2.onrender.com";
+// We'll use the centralized axiosInstance instead of creating a new one
+// This ensures consistent configuration across the application
+const api = axiosInstance;
 
-// Create axios instance with credentials and timeout
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
-  timeout: 10000, // 10 second timeout
-});
+// Log the API URL being used for orders
+console.log('Orders service using API base URL:', API_BASE_URL);
 
 // Add request interceptor to include auth token
 api.interceptors.request.use(
@@ -69,7 +69,7 @@ api.interceptors.response.use(
 export const createNewOrder = async (orderData) => {
   try {
     console.log("Creating order with data:", orderData);
-    const response = await api.post("/api/v1/orders/create", orderData);
+    const response = await api.post("/orders/create", orderData);
     console.log("Order creation response:", response.data);
     return response.data;
   } catch (error) {
@@ -89,7 +89,8 @@ export const getUserOrders = async () => {
     );
 
     console.log("Fetching orders for current user with auth token");
-    const response = await api.get("/api/v1/orders/user-orders");
+    // Remove duplicate /api/v1 path since it's already in the baseURL
+    const response = await api.get("/orders/user-orders");
 
     console.log("Orders API response:", {
       success: response.data?.success,
@@ -119,7 +120,7 @@ export const getUserOrders = async () => {
 // Get a specific order by ID
 export const getOrderById = async (orderId) => {
   try {
-    const response = await api.get(`/api/v1/orders/${orderId}`);
+    const response = await api.get(`/orders/${orderId}`);
     return response.data;
   } catch (error) {
     throw error.response?.data || { message: "Error fetching order" };
@@ -129,7 +130,7 @@ export const getOrderById = async (orderId) => {
 // Get order status history
 export const getOrderStatusHistory = async (orderId) => {
   try {
-    const response = await api.get(`/api/v1/orders/${orderId}/status-history`);
+    const response = await api.get(`/orders/${orderId}/status-history`);
     return response.data;
   } catch (error) {
     console.error("Failed to fetch order status history:", error);
@@ -141,7 +142,7 @@ export const getOrderStatusHistory = async (orderId) => {
 export const updateOrderStatus = async (orderId, status, note = "") => {
   try {
     console.log(`Updating order ${orderId} status to ${status}`);
-    const response = await api.put(`/api/v1/orders/${orderId}/status`, {
+    const response = await api.put(`/orders/${orderId}/status`, {
       status,
       note,
     });
@@ -155,7 +156,7 @@ export const updateOrderStatus = async (orderId, status, note = "") => {
 // Cancel an order
 export const cancelOrder = async (orderId) => {
   try {
-    const response = await api.put(`/api/v1/orders/${orderId}/cancel`);
+    const response = await api.put(`/orders/${orderId}/cancel`);
     return response.data;
   } catch (error) {
     throw error.response?.data || { message: "Error cancelling order" };
@@ -165,7 +166,7 @@ export const cancelOrder = async (orderId) => {
 // Reorder a previous order
 export const reorderPreviousOrder = async (orderId) => {
   try {
-    const response = await api.post(`/api/v1/orders/${orderId}/reorder`);
+    const response = await api.post(`/orders/${orderId}/reorder`);
     return response.data;
   } catch (error) {
     throw error.response?.data || { message: "Error reordering" };

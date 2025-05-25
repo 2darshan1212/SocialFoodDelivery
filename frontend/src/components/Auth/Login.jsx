@@ -6,6 +6,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { Loader, Loader2 } from "lucide-react";
 import { setAuthUser } from "../../redux/authSlice";
 import { useDispatch } from "react-redux";
+import { API_BASE_URL } from "../../utils/apiConfig";
+import axiosInstance from "../../utils/axiosInstance";
 
 const Login = () => {
   const [input, setInput] = useState({
@@ -23,32 +25,54 @@ const Login = () => {
     e.preventDefault();
     try {
       setLoading(true);
-      const res = await axios.post(
-        "https://socialfooddelivery-2.onrender.com/api/v1/user/login",
-        input,
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          withCredentials: true,
-        }
+      console.log('Logging in with API URL:', API_BASE_URL);
+      const res = await axiosInstance.post(
+        "/user/login",
+        input
       );
-      console.log(res.data);
+      console.log('Login response:', res.data);
+      
       if (res.data.success) {
+        // Store user data in Redux state
         const userData = {
           ...res.data.user,
           isAdmin: res.data.user.isAdmin || false,
         };
-
+        
+        // Save auth token to localStorage and cookies if it exists in the response
+        if (res.data.token) {
+          console.log('Saving auth token to localStorage and cookies');
+          const token = res.data.token;
+          
+          // Store in localStorage for frontend use
+          localStorage.setItem('token', token);
+          
+          // Set cookie for backend authentication
+          // Use different cookie settings based on protocol
+          if (window.location.protocol === 'https:') {
+            document.cookie = `token=${token}; path=/; SameSite=None; Secure`;
+          } else {
+            // For development on HTTP (not HTTPS)
+            document.cookie = `token=${token}; path=/; SameSite=Lax`;
+          }
+          
+          // Log the set cookie for debugging
+          console.log('Set cookies:', document.cookie);
+        } else {
+          console.warn('No token received in login response');
+        }
+        
+        // Update Redux state with user data
         dispatch(setAuthUser(userData));
-
+        
+        // Navigate based on user role
         if (userData.isAdmin && window.location.pathname.includes("/admin")) {
           navigate("/admin/dashboard");
         } else {
           navigate("/");
         }
-
-        toast.success(res.data.message);
+        
+        toast.success(res.data.message || 'Login successful');
         setInput({
           email: "",
           password: "",

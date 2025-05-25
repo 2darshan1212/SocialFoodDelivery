@@ -27,7 +27,7 @@ const messageSchema = new mongoose.Schema({
     },
     fileType: {
         type: String,
-        enum: ['image', 'document', null],
+        enum: ['image', 'document', 'video', null],
         default: null
     },
     fileName: {

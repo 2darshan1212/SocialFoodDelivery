@@ -9,9 +9,20 @@ const storage = multer.memoryStorage();
 // File filter to check acceptable file types
 const fileFilter = (req, file, cb) => {
   const allowedFileTypes = [
+    // Image files
     'image/jpeg',
     'image/png',
     'image/gif',
+    'image/webp',
+    // Video files
+    'video/mp4',
+    'video/mpeg',
+    'video/quicktime', // MOV files
+    'video/x-msvideo', // AVI files
+    'video/webm',
+    'video/ogg',
+    'video/3gpp',
+    // Document files
     'application/pdf',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -21,6 +32,7 @@ const fileFilter = (req, file, cb) => {
   console.log("File upload attempt:", file.mimetype, file.originalname);
 
   if (allowedFileTypes.includes(file.mimetype)) {
+    console.log("Accepted file type:", file.mimetype, file.originalname);
     cb(null, true);
   } else {
     console.log("Rejected file type:", file.mimetype);
@@ -31,7 +43,7 @@ const fileFilter = (req, file, cb) => {
 // Create multer instance with configuration
 export const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max file size
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max file size (increased to accommodate videos)
   fileFilter
 });
 
