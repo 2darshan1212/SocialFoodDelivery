@@ -278,6 +278,57 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
     }
   };
 
+  // Generate rich content for sharing
+  const generateRichShareContent = (platform, shareUrl, postData) => {
+    const baseMessage = message || `Check out this delicious food post: ${postData.caption}`;
+    const postPrice = postData.price ? `₹${postData.price}` : '';
+    const postRating = postData.rating?.average ? `${postData.rating.average.toFixed(1)}★` : '';
+    const postCategory = postData.category || 'Food';
+    
+    // Format message with emojis and formatting based on platform
+    let richMessage = '';
+    
+    // Create a dynamic message based on platform capabilities
+    switch (platform) {
+      case 'whatsapp':
+        // WhatsApp supports basic formatting
+        richMessage = `🍽️ *${postData.caption}*\n\n`;
+        
+        // Add food details with emojis
+        if (postCategory) richMessage += `🍴 ${postCategory}\n`;
+        if (postPrice) richMessage += `💰 ${postPrice}\n`;
+        if (postRating) richMessage += `⭐ ${postRating}\n`;
+        if (postData.vegetarian) richMessage += `🥗 Vegetarian\n`;
+        
+        // Add user message if provided
+        if (message) richMessage += `\n💬 ${message}\n`;
+        
+        // Add call-to-action with the link
+        richMessage += `\n📱 View and order now: ${shareUrl}`;
+        break;
+        
+      case 'telegram':
+        // Telegram supports more formatting
+        richMessage = `🍽️ *${postData.caption}*\n\n`;
+        richMessage += `${postCategory} ${postPrice ? `• ${postPrice}` : ''} ${postRating ? `• ${postRating}` : ''}\n`;
+        if (postData.vegetarian) richMessage += `🥗 Vegetarian\n`;
+        
+        if (message) richMessage += `\n${message}\n`;
+        richMessage += `\n📱 [View and order now](${shareUrl})`;
+        break;
+        
+      default:
+        // Default format for other platforms
+        richMessage = `${baseMessage}\n\n`;
+        
+        // Add basic details for platforms with limited formatting
+        richMessage += `${postCategory}${postPrice ? ` • ${postPrice}` : ''}${postRating ? ` • ${postRating}` : ''}\n`;
+        richMessage += `View and order now: ${shareUrl}`;
+    }
+    
+    return richMessage;
+  };
+
   // Handle share via external platform
   const handleExternalShare = async (platform) => {
     setPreviewPlatform(platform);
@@ -285,6 +336,9 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
     try {
       setShareLoading(true);
 
+      // Create a dynamic deep link that will redirect to the specific post in the app
+      const postDeepLink = `socialfooddelivery://post/${post._id}`;
+      
       // First create a share record
       const res = await axios.post(
         "https://socialfooddelivery-2.onrender.com/api/v1/share/create",
@@ -293,6 +347,7 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
           sharedWith: "external",
           externalPlatform: platform,
           message: message,
+          deepLink: postDeepLink // Send deepLink to backend
         },
         {
           headers: { "Content-Type": "application/json" },
@@ -310,33 +365,40 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
           onShareSuccess();
         }
 
-        // Construct platform-specific share links
-        let externalUrl = "";
+        // Generate rich content for sharing
+        const richContent = generateRichShareContent(platform, shareUrl, post);
+        const encodedRichContent = encodeURIComponent(richContent);
+        
+        // Simple message for fallback
         const encodedMessage = encodeURIComponent(
           message || `Check out this delicious food post: ${post.caption}`
         );
         const encodedUrl = encodeURIComponent(shareUrl);
+        
+        // Construct platform-specific share links
+        let externalUrl = "";
 
         switch (platform) {
           case "twitter":
             externalUrl = `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedMessage}`;
             break;
           case "facebook":
+            // Facebook uses Open Graph metadata for rich previews
             externalUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
             break;
           case "whatsapp":
-            externalUrl = `https://api.whatsapp.com/send?text=${encodedMessage} ${encodedUrl}`;
+            // Use rich content for WhatsApp
+            externalUrl = `https://api.whatsapp.com/send?text=${encodedRichContent}`;
             break;
           case "telegram":
-            externalUrl = `https://t.me/share/url?url=${encodedUrl}&text=${encodedMessage}`;
+            // Use rich content for Telegram
+            externalUrl = `https://t.me/share/url?url=${encodedUrl}&text=${encodedRichContent}`;
             break;
           case "email":
             externalUrl = `mailto:?subject=${encodeURIComponent(
               `Shared Food Post: ${post.caption}`
             )}&body=${encodeURIComponent(
-              `${
-                message || "Check out this delicious food post!"
-              }\n\n${shareUrl}`
+              richContent.replace(/\*/g, '').replace(/\n/g, '\n')
             )}`;
             break;
           case "linkedin":
@@ -352,8 +414,78 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
           case "reddit":
             externalUrl = `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodedMessage}`;
             break;
+          case "instagram":
+            // Instagram doesn't have a web sharing API like other platforms
+            // We'll use different approaches based on device type and capabilities
+            
+            // 1. Try direct deep link to Instagram app for mobile devices
+            if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+              // For stories (preferred method for food posts)
+              if (post.image) {
+                try {
+                  // Create a blob URL for the image
+                  const imgResponse = await fetch(post.image);
+                  const imgBlob = await imgResponse.blob();
+                  const blobUrl = URL.createObjectURL(imgBlob);
+                  
+                  // Try to open Instagram stories with the image
+                  externalUrl = `instagram://story?media=${encodeURIComponent(blobUrl)}&text=${encodeURIComponent(post.caption)}\n${encodedUrl}`;
+                } catch (error) {
+                  console.error('Error preparing image for Instagram:', error);
+                  // Fallback to simple sharing
+                  externalUrl = 'instagram://camera';
+                }
+              } else {
+                // Generic Instagram deep link - opens the app
+                externalUrl = 'instagram://camera';
+              }
+            } else {
+              // For desktop, create a modal with instructions
+              setPreviewPlatform("instagram-instructions");
+              // Show copy toast
+              toast.info("Instagram sharing prepared! Copy text and image to share manually.", {
+                autoClose: 5000,
+                position: toast.POSITION.BOTTOM_CENTER
+              });
+              
+              // Copy the content to clipboard for easy manual sharing
+              navigator.clipboard.writeText(`${post.caption}\n\n${shareUrl}`);
+              
+              // No external URL since we're handling it differently
+              externalUrl = "";
+            }
+            break;
+          case "instagram-story":
+            // Special case for Instagram Story sharing
+            // Instagram has a specific deep link format for stories
+            if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+              try {
+                if (post.image) {
+                  // Attempt to use the background image for stories
+                  // Note: This method may not work on all devices due to Instagram restrictions
+                  const stickerText = encodeURIComponent(`${post.caption}\n\nCheck out this post: ${shareUrl}`);
+                  externalUrl = `instagram://story?media=${encodeURIComponent(post.image)}&text=${stickerText}`;
+                } else {
+                  // Fallback to camera
+                  externalUrl = 'instagram://camera';
+                }
+              } catch (error) {
+                console.error('Error preparing Instagram Story:', error);
+                externalUrl = 'instagram://camera';
+              }
+            } else {
+              // For desktop, similar handling as regular Instagram
+              setPreviewPlatform("instagram-instructions");
+              toast.info("Copy image and text to share as an Instagram Story", {
+                autoClose: 5000
+              });
+              navigator.clipboard.writeText(`${post.caption}\n\n${shareUrl}`);
+              externalUrl = "";
+            }
+            break;
           case "copy":
-            navigator.clipboard.writeText(shareUrl);
+            // For copy, include the rich content in the clipboard
+            navigator.clipboard.writeText(richContent);
             setCopySuccess(true);
             setTimeout(() => setCopySuccess(false), 3000);
             break;
@@ -361,7 +493,39 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
             break;
         }
 
-        // Open external url if not copy
+        // Try to use the Web Share API for native sharing if available (mobile browsers)
+        if (navigator.share && platform !== "copy" && (platform === "whatsapp" || platform === "telegram")) {
+          try {
+            const shareData = {
+              title: post.caption,
+              text: richContent,
+              url: shareUrl,
+            };
+            
+            // If we have an image, try to include it (not supported in all browsers)
+            if (post.image && platform === "whatsapp") {
+              try {
+                const response = await fetch(post.image);
+                const blob = await response.blob();
+                const file = new File([blob], 'food-image.jpg', { type: 'image/jpeg' });
+                shareData.files = [file];
+              } catch (fileError) {
+                console.error("Error including image in share:", fileError);
+                // Continue without the image
+              }
+            }
+            
+            await navigator.share(shareData);
+            
+            // Don't open external URL if Web Share API was successful
+            externalUrl = "";
+          } catch (shareError) {
+            console.log("Web Share API failed, falling back to regular share:", shareError);
+            // Continue with fallback method if Web Share API fails
+          }
+        }
+        
+        // Open external url if not copy and not handled by Web Share API
         if (platform !== "copy" && externalUrl) {
           window.open(externalUrl, "_blank", "noopener,noreferrer");
         }
@@ -534,6 +698,19 @@ const ShareDialog = ({ open, onClose, post, onShareSuccess }) => {
         id: "facebook",
         name: "Facebook",
         icon: <Facebook size={24} className="text-[#4267B2]" />,
+      },
+      {
+        id: "instagram",
+        name: "Instagram",
+        icon: <Instagram size={24} className="text-[#E1306C]" />,
+      },
+      {
+        id: "instagram-story",
+        name: "Instagram Story",
+        icon: <div className="relative">
+                <Instagram size={24} className="text-[#E1306C]" />
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-tr from-yellow-400 to-pink-500 rounded-full" />
+              </div>,
       },
       {
         id: "whatsapp",

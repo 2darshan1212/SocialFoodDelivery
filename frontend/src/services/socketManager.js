@@ -8,6 +8,9 @@ export const SOCKET_EVENTS = {
 
   // Notification events
   NEW_NOTIFICATION: "new_notification",
+  
+  // Post events
+  NEW_POST: "new_post",
 
   // Delivery events
   ORDER_ASSIGNED: "order_assigned",

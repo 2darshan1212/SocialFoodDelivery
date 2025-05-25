@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Paper, Typography, Avatar, Skeleton, Fade, Grow, IconButton } from '@mui/material';
-import { Twitter, Facebook, MessageSquare, Send, ExternalLink, Check, X, AlertCircle, Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { Box, Paper, Typography, Avatar, Skeleton, Fade, Grow, IconButton, Divider } from '@mui/material';
+import { Twitter, Facebook, MessageSquare, Send, ExternalLink, Check, X, AlertCircle, Play, Pause, Volume2, VolumeX, Instagram } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import InstagramShareInstructions from './InstagramShareInstructions';
 
 const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => {
   const [isLoading, setIsLoading] = useState(true);
@@ -261,6 +263,128 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
     }
 
     switch (platform) {
+      case 'instagram-instructions':
+        return (
+          <Fade in={animateIn} timeout={300}>
+            <Paper className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+              <InstagramShareInstructions 
+                post={post} 
+                shareLink={shareLink} 
+                onClose={onClose} 
+              />
+            </Paper>
+          </Fade>
+        );
+        
+      case 'instagram':
+      case 'instagram-story':
+        return (
+          <Grow in={animateIn} timeout={500}>
+            <Paper className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Instagram size={22} className="text-pink-600" />
+                  <Typography variant="subtitle2" className="font-bold">
+                    {platform === 'instagram-story' ? 'Instagram Story Preview' : 'Instagram Preview'}
+                  </Typography>
+                </div>
+                <Typography variant="caption" className="text-gray-500">
+                  @{user?.username?.toLowerCase().replace(/\s/g, '') || 'user'}
+                </Typography>
+              </div>
+              
+              {/* Instagram UI mockup */}
+              <div className="overflow-hidden rounded-md border border-gray-200 mb-3">
+                {/* Media */}
+                <div className="relative w-full aspect-square bg-black flex justify-center items-center">
+                  {post.video ? (
+                    <video 
+                      src={post.video}
+                      className="w-full h-full object-contain"
+                      poster={post.image || undefined}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                    />
+                  ) : post.image ? (
+                    <img 
+                      src={post.image}
+                      alt={post.caption}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <Typography variant="body2" className="text-white">
+                      No media available
+                    </Typography>
+                  )}
+                  
+                  {/* Story specific UI elements */}
+                  {platform === 'instagram-story' && (
+                    <div className="absolute inset-0 p-4 flex flex-col justify-between">
+                      <div className="flex justify-between">
+                        {/* Story progress indicators */}
+                        <div className="flex gap-1">
+                          {[...Array(3)].map((_, i) => (
+                            <div 
+                              key={i} 
+                              className={`h-1 rounded-full ${i === 0 ? 'w-14 bg-white' : 'w-14 bg-white/40'}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Bottom text for story */}
+                      <div className="bg-black/40 p-3 rounded-lg self-start max-w-[80%]">
+                        <Typography variant="body2" className="text-white font-medium">
+                          {truncateText(post?.caption, 60)}
+                        </Typography>
+                        <Typography variant="caption" className="text-white/80 block mt-1">
+                          {getMetaInfo()}
+                        </Typography>
+                        <Typography variant="caption" className="text-blue-300 block mt-1">
+                          {shareLink}
+                        </Typography>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Caption area (only for regular posts, not stories) */}
+                {platform === 'instagram' && (
+                  <div className="p-3 bg-white">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Avatar 
+                        src={user?.profilePicture} 
+                        alt={user?.username} 
+                        sx={{ width: 24, height: 24 }}
+                      >
+                        {user?.username?.charAt(0) || 'U'}
+                      </Avatar>
+                      <Typography variant="subtitle2" className="font-medium">
+                        {user?.username || 'user'}
+                      </Typography>
+                    </div>
+                    <Typography variant="body2" className="mb-1">
+                      <span className="font-medium">{user?.username || 'user'}</span>{' '}
+                      {message || truncateText(post?.caption, 100)}
+                    </Typography>
+                    <Typography variant="caption" className="text-blue-500">
+                      {shareLink}
+                    </Typography>
+                  </div>
+                )}
+              </div>
+              
+              <Typography variant="body2" className="text-gray-500 italic text-center">
+                {platform === 'instagram-story' 
+                  ? "The actual story appearance may vary based on Instagram's current UI" 
+                  : "You'll need to manually share this on Instagram. Follow the instructions provided."}
+              </Typography>
+            </Paper>
+          </Grow>
+        );
+        
       case 'twitter':
         return (
           <Grow in={animateIn} timeout={500}>

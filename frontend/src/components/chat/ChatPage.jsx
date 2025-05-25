@@ -11,9 +11,23 @@ import {
   useTheme,
   Badge,
   Tooltip,
-  Divider
+  Divider,
+  LinearProgress
 } from "@mui/material";
-import { MessageCircleCode, Menu, X, Paperclip, ImageIcon, FileIcon } from "lucide-react";
+import { 
+  MessageCircleCode, 
+  Menu, 
+  X, 
+  Paperclip, 
+  ImageIcon, 
+  FileIcon, 
+  VideoIcon, 
+  Image as ImageLucide, 
+  Play, 
+  Pause, 
+  Volume2, 
+  VolumeX 
+} from "lucide-react";
 import axios from "axios";
 
 import Messages from "./Messages";
@@ -39,6 +53,12 @@ const ChatPage = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
+  const [fileType, setFileType] = useState(null); // 'image', 'video', 'document'
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const videoPreviewRef = useRef(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -125,11 +145,19 @@ const ChatPage = () => {
     
     setSelectedFile(file);
     
-    // Create preview for images
+    // Determine file type and create preview
     if (file.type.startsWith('image/')) {
+      setFileType('image');
       const objectUrl = URL.createObjectURL(file);
       setFilePreview(objectUrl);
+    } else if (file.type.startsWith('video/')) {
+      setFileType('video');
+      const objectUrl = URL.createObjectURL(file);
+      setFilePreview(objectUrl);
+      // Reset video playing state
+      setIsVideoPlaying(false);
     } else {
+      setFileType('document');
       setFilePreview(null);
     }
   };
@@ -146,6 +174,7 @@ const ChatPage = () => {
   // Reset file selection
   const handleCancelFile = () => {
     setSelectedFile(null);
+    setFileType(null);
     if (filePreview) {
       URL.revokeObjectURL(filePreview);
       setFilePreview(null);
@@ -153,6 +182,29 @@ const ChatPage = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    // Reset video state
+    setIsVideoPlaying(false);
+    setIsMuted(false);
+  };
+  
+  // Toggle video play/pause
+  const toggleVideoPlay = () => {
+    if (!videoPreviewRef.current) return;
+    
+    if (isVideoPlaying) {
+      videoPreviewRef.current.pause();
+    } else {
+      videoPreviewRef.current.play();
+    }
+    setIsVideoPlaying(!isVideoPlaying);
+  };
+  
+  // Toggle video mute
+  const toggleMute = () => {
+    if (!videoPreviewRef.current) return;
+    
+    videoPreviewRef.current.muted = !videoPreviewRef.current.muted;
+    setIsMuted(!isMuted);
   };
 
   const sendMessageHandler = async (receiverId) => {
@@ -160,6 +212,10 @@ const ChatPage = () => {
 
     try {
       setIsSending(true);
+      if (selectedFile) {
+        setIsUploading(true);
+        setUploadProgress(0);
+      }
       
       // Create form data for file upload
       const formData = new FormData();
@@ -168,7 +224,10 @@ const ChatPage = () => {
       
       if (selectedFile) {
         formData.append('file', selectedFile);
-        console.log("Appending file to form data:", selectedFile.name);
+        if (fileType) {
+          formData.append('fileType', fileType); // Send file type to backend
+        }
+        console.log("Appending file to form data:", selectedFile.name, fileType);
       }
       
       console.log("Sending message to:", receiverId);
@@ -181,6 +240,11 @@ const ChatPage = () => {
             'Content-Type': 'multipart/form-data',
           },
           withCredentials: true,
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setUploadProgress(percentCompleted);
+            console.log(`Upload progress: ${percentCompleted}%`);
+          }
         }
       );
 
@@ -201,6 +265,8 @@ const ChatPage = () => {
       console.error("Failed to send message:", error);
     } finally {
       setIsSending(false);
+      setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -283,15 +349,40 @@ const ChatPage = () => {
             {/* File Preview */}
             {selectedFile && (
               <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {filePreview ? (
-                      <div className="relative w-16 h-16">
+                    {fileType === 'image' && filePreview ? (
+                      <div className="relative">
                         <img 
                           src={filePreview} 
                           alt="Upload preview" 
-                          className="w-16 h-16 object-cover rounded"
+                          className="max-h-40 max-w-full object-contain rounded"
                         />
+                      </div>
+                    ) : fileType === 'video' && filePreview ? (
+                      <div className="relative w-full max-w-md">
+                        <div className="rounded overflow-hidden bg-black relative">
+                          <video 
+                            ref={videoPreviewRef}
+                            src={filePreview} 
+                            className="max-h-40 max-w-full object-contain"
+                            onPlay={() => setIsVideoPlaying(true)}
+                            onPause={() => setIsVideoPlaying(false)}
+                            muted={isMuted}
+                          />
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 flex items-center p-1 justify-between">
+                            <IconButton size="small" onClick={toggleVideoPlay} sx={{ color: 'white' }}>
+                              {isVideoPlaying ? <Pause size={16} /> : <Play size={16} />}
+                            </IconButton>
+                            <IconButton size="small" onClick={toggleMute} sx={{ color: 'white' }}>
+                              {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                            </IconButton>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1 flex justify-between">
+                          <span>{selectedFile.name}</span>
+                          <span>{formatFileSize(selectedFile.size)}</span>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 bg-gray-100 p-2 rounded">
@@ -307,6 +398,17 @@ const ChatPage = () => {
                     <X size={18} />
                   </IconButton>
                 </div>
+                
+                {/* Upload progress bar */}
+                {isUploading && (
+                  <div className="mt-2">
+                    <LinearProgress variant="determinate" value={uploadProgress} />
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>Uploading...</span>
+                      <span>{uploadProgress}%</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -320,15 +422,49 @@ const ChatPage = () => {
                 onChange={handleFileChange}
                 ref={fileInputRef}
               />
-              <Tooltip title="Attach file">
-                <IconButton 
-                  color="primary" 
-                  onClick={() => fileInputRef.current.click()}
-                  disabled={isSending}
-                >
-                  <Paperclip size={20} />
-                </IconButton>
-              </Tooltip>
+              <div className="flex gap-1">
+                <Tooltip title="Attach image">
+                  <IconButton 
+                    color="primary" 
+                    onClick={() => {
+                      fileInputRef.current.setAttribute('accept', 'image/*');
+                      fileInputRef.current.click();
+                    }}
+                    disabled={isSending}
+                    size="small"
+                  >
+                    <ImageLucide size={18} />
+                  </IconButton>
+                </Tooltip>
+                
+                <Tooltip title="Attach video">
+                  <IconButton 
+                    color="primary" 
+                    onClick={() => {
+                      fileInputRef.current.setAttribute('accept', 'video/*');
+                      fileInputRef.current.click();
+                    }}
+                    disabled={isSending}
+                    size="small"
+                  >
+                    <VideoIcon size={18} />
+                  </IconButton>
+                </Tooltip>
+                
+                <Tooltip title="Attach file">
+                  <IconButton 
+                    color="primary" 
+                    onClick={() => {
+                      fileInputRef.current.setAttribute('accept', '*');
+                      fileInputRef.current.click();
+                    }}
+                    disabled={isSending}
+                    size="small"
+                  >
+                    <Paperclip size={18} />
+                  </IconButton>
+                </Tooltip>
+              </div>
               
               <input
                 value={textMessage}

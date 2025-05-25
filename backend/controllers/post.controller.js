@@ -242,7 +242,10 @@ export const addNewPost = async (req, res) => {
     // Populate author details
     await post.populate({ path: "author", select: "username profilePicture location" });
 
-    console.log("Post created successfully:", post._id);
+    // Emit socket event for real-time feed updates
+    io.emit("NEW_POST", post);
+    console.log("Post created successfully and broadcast to all users:", post._id);
+    
     return res.status(201).json({
       message: "New Post Added",
       post,

@@ -8,16 +8,31 @@ import mongoose from "mongoose";
 export const createShare = async (req, res) => {
   try {
     const userId = req.id;
-    const { postId, sharedWith, recipients, externalPlatform, message } = req.body;
+    const { postId, sharedWith, recipients, externalPlatform, message, deepLink } = req.body;
 
     // Validate post exists
-    const post = await Post.findById(postId);
+    const post = await Post.findById(postId).populate('author', 'username profilePicture');
     if (!post) {
       return res.status(404).json({
         success: false,
         message: "Post not found"
       });
     }
+
+    // Generate rich content for sharing
+    const richContent = {
+      title: post.caption || "Delicious Food Post",
+      description: post.description || "Check out this amazing food post",
+      imageUrl: post.image || post.video || "",
+      metadata: new Map()
+    };
+    
+    // Add metadata for rich sharing
+    if (post.price) richContent.metadata.set('price', `₹${post.price}`);
+    if (post.category) richContent.metadata.set('category', post.category);
+    if (post.vegetarian !== undefined) richContent.metadata.set('vegetarian', post.vegetarian ? 'Yes' : 'No');
+    if (post.rating?.average) richContent.metadata.set('rating', post.rating.average.toFixed(1));
+    if (post.author?.username) richContent.metadata.set('author', post.author.username);
 
     // Create share record
     const newShare = new Share({
@@ -26,6 +41,8 @@ export const createShare = async (req, res) => {
       sharedWith,
       message: message || "",
       externalPlatform: externalPlatform || null,
+      deepLink: deepLink || `socialfooddelivery://post/${postId}`,
+      richContent
     });
 
     // If sharing to specific users, validate and add recipients

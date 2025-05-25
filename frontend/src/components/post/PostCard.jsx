@@ -543,6 +543,8 @@ const PostCard = ({ post }) => {
   const [distance, setDistance] = useState(null);
   const [locationStatus, setLocationStatus] = useState("loading"); // 'loading', 'ready', 'missing', 'error'
   const [locationErrorMsg, setLocationErrorMsg] = useState("");
+  // New state for mobile actions visibility
+  const [showMobileActions, setShowMobileActions] = useState(false);
 
   // Rating states
   const [postRating, setPostRating] = useState({
@@ -1336,7 +1338,48 @@ const PostCard = ({ post }) => {
           {post.caption}
         </p>
 
-        <div className="flex items-center justify-between mb-3">
+        {/* Mobile view with 3 dots and price button */}
+        <div className="flex items-center justify-between mb-3 md:hidden">
+          <button 
+            className="text-gray-600 text-xl font-bold" 
+            onClick={() => setShowMobileActions(!showMobileActions)}
+          >
+            ⋮
+          </button>
+
+          {isItemInCart(post._id) ? (
+            <div className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded-lg">
+              <button
+                onClick={() => decreaseItem(post._id)}
+                className="bg-red-100 hover:bg-red-200 w-7 h-7 flex items-center justify-center rounded-md text-lg transition-colors"
+                disabled={cartLoading}
+              >
+                -
+              </button>
+              <span className="text-sm font-medium w-5 text-center">
+                {getItemQuantity(post._id)}
+              </span>
+              <button
+                onClick={() => increaseItem(post._id)}
+                className="bg-green-100 hover:bg-green-200 w-7 h-7 flex items-center justify-center rounded-md text-lg transition-colors"
+                disabled={cartLoading}
+              >
+                +
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={addToCartHandler}
+              className="px-3 py-1.5 text-sm bg-orange-50 text-orange-500 font-medium rounded-md hover:bg-orange-100 transition-colors"
+              disabled={cartLoading}
+            >
+              Add ₹{parseFloat(post.price || 0).toFixed(2)}
+            </button>
+          )}
+        </div>
+
+        {/* Desktop view - always visible */}
+        <div className="hidden md:flex items-center justify-between mb-3">
           <p className="text-yellow-500 font-bold">
             {"⭐".repeat(post.ratings)}
           </p>
@@ -1372,7 +1415,43 @@ const PostCard = ({ post }) => {
           )}
         </div>
 
-        <div className="flex items-center gap-6 text-gray-600 text-xl">
+        {/* Mobile view - action buttons that appear when 3 dots clicked */}
+        {showMobileActions && (
+          <div className="flex items-center gap-6 text-gray-600 text-xl mb-3 md:hidden animate-fade-in">
+            <button onClick={handleLike} className="transition cursor-pointer">
+              {liked ? <FcLike className="text-2xl" /> : <FiHeart />}
+            </button>
+
+            <button
+              onClick={() => {
+                dispatch(setSelectedPost(post));
+                setCommentDialogOpen(true);
+              }}
+              className="hover:text-blue-500 transition cursor-pointer"
+            >
+              <FiMessageCircle />
+            </button>
+
+            <button
+              onClick={handleShare}
+              className="hover:text-green-500 transition cursor-pointer"
+            >
+              <FiShare />
+            </button>
+
+            <button
+              onClick={handleBookmark}
+              className={`transition cursor-pointer ${
+                bookmarked ? "text-blue-500" : ""
+              }`}
+            >
+              <FiBookmark />
+            </button>
+          </div>
+        )}
+
+        {/* Desktop view - always visible action buttons */}
+        <div className="hidden md:flex items-center gap-6 text-gray-600 text-xl">
           <button onClick={handleLike} className="transition cursor-pointer">
             {liked ? <FcLike className="text-2xl" /> : <FiHeart />}
           </button>
@@ -1452,8 +1531,17 @@ const PostCard = ({ post }) => {
           )}
         </div>
 
-        {/* Rating section */}
-        {renderRating()}
+        {/* Mobile rating section - only shows when 3 dots clicked */}
+        {showMobileActions && (
+          <div className="md:hidden">
+            {renderRating()}
+          </div>
+        )}
+        
+        {/* Desktop rating section - always visible */}
+        <div className="hidden md:block">
+          {renderRating()}
+        </div>
       </div>
 
       {/* Dialogs */}
