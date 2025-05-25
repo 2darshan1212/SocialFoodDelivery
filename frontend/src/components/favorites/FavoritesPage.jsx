@@ -398,41 +398,41 @@ const FavoritesPage = () => {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4">
+    <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 mb-16">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between mb-4 sm:mb-6">
         <div className="flex items-center mb-2 sm:mb-0">
-          <IconButton onClick={() => navigate(-1)}>
-            <ArrowLeft />
+          <IconButton onClick={() => navigate(-1)} size="small" sx={{ padding: { xs: 0.5, sm: 1 } }}>
+            <ArrowLeft size={20} />
           </IconButton>
-          <h1 className="text-xl font-semibold ml-2">My Favorites</h1>
+          <h1 className="text-lg sm:text-xl font-semibold ml-1 sm:ml-2">My Favorites</h1>
           <IconButton
             onClick={handleRefreshBookmarks}
             disabled={syncingBookmarks}
             title="Refresh bookmarks"
             color="primary"
             size="small"
-            sx={{ ml: 1 }}
+            sx={{ ml: { xs: 0.5, sm: 1 }, padding: { xs: 0.5, sm: 1 } }}
           >
             <RefreshCcw
-              size={16}
+              size={14}
               className={syncingBookmarks ? "animate-spin" : ""}
             />
           </IconButton>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-1 sm:gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-initial">
             <input
               type="text"
               placeholder="Search favorites..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 pr-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-transparent search-input w-full"
+              className="pl-7 sm:pl-8 pr-3 sm:pr-4 py-1.5 sm:py-2 text-sm rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:border-transparent search-input w-full"
             />
             <Search
               className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400"
-              size={18}
+              size={16}
             />
           </div>
 
@@ -572,20 +572,28 @@ const FavoritesPage = () => {
           TabIndicatorProps={{
             className: "custom-tab-indicator",
           }}
+          sx={{ 
+            '& .MuiTab-root': { 
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              minHeight: { xs: '48px', sm: '48px' },
+              py: { xs: 1, sm: 1.5 },
+              px: { xs: 1, sm: 2 }
+            }
+          }}
         >
           <Tab
             label="All Favorites"
-            icon={<Bookmark size={16} />}
+            icon={<Bookmark size={14} />}
             iconPosition="start"
           />
           <Tab
             label="Food Items"
-            icon={<Star size={16} />}
+            icon={<Star size={14} />}
             iconPosition="start"
           />
           <Tab
             label="Food Locations"
-            icon={<MapPin size={16} />}
+            icon={<MapPin size={14} />}
             iconPosition="start"
           />
         </Tabs>
@@ -632,14 +640,14 @@ const FavoritesPage = () => {
             {favoritePosts.filter(
               (post) => post.category === "Food" || post.category === "Dessert"
             ).length > 0 ? (
-              <Grid container spacing={3} className="favorites-container">
+              <Grid container spacing={{ xs: 1, sm: 2, md: 3 }} className="favorites-container">
                 {favoritePosts
                   .filter(
                     (post) =>
                       post.category === "Food" || post.category === "Dessert"
                   )
                   .map((post) => (
-                    <Grid item xs={12} sm={6} md={4} key={post._id}>
+                    <Grid item xs={6} sm={6} md={4} lg={3} key={post._id}>
                       <Card className="h-full flex flex-col favorite-card">
                         <CardMedia
                           component="img"
@@ -721,25 +729,25 @@ const FavoritesPage = () => {
           {/* Food Locations Tab */}
           <TabPanel value={tabValue} index={2}>
             {favoritePosts.filter((post) => post.location).length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 favorites-container">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 favorites-container">
                 {favoritePosts
                   .filter((post) => post.location)
                   .map((post) => (
                     <Paper
                       key={post._id}
                       elevation={1}
-                      className="p-4 flex gap-4 favorite-card"
+                      className="p-2 sm:p-4 flex gap-2 sm:gap-4 favorite-card"
                     >
                       <img
                         src={post.image}
                         alt={post.caption}
-                        className="w-24 h-24 object-cover rounded-md cursor-pointer"
+                        className="w-16 h-16 sm:w-24 sm:h-24 object-cover rounded-md cursor-pointer flex-shrink-0"
                         onClick={() => navigate(`/post/${post._id}`)}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start">
                           <h3
-                            className="font-medium text-gray-900 hover:text-orange-500 cursor-pointer transition-colors truncate"
+                            className="font-medium text-gray-900 hover:text-orange-500 cursor-pointer transition-colors truncate text-sm sm:text-base"
                             onClick={() => navigate(`/post/${post._id}`)}
                           >
                             {post.caption}
@@ -750,25 +758,28 @@ const FavoritesPage = () => {
                               e.stopPropagation();
                               handleRemoveBookmark(post._id);
                             }}
+                            sx={{ padding: { xs: 0.5, sm: 1 } }}
                           >
-                            <Bookmark size={16} />
+                            <Bookmark size={14} />
                           </IconButton>
                         </div>
-                        <div className="flex items-center text-sm text-gray-500 mt-1">
-                          <MapPin size={14} className="mr-1" />
-                          {post.location}{" "}
-                          {post.distance && `• ${post.distance} km`}
+                        <div className="flex items-center text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1">
+                          <MapPin size={12} className="mr-1 flex-shrink-0" />
+                          <span className="truncate">
+                            {post.location}{" "}
+                            {post.distance && `• ${post.distance} km`}
+                          </span>
                         </div>
-                        <div className="flex items-center gap-3 mt-2">
-                          <span className="text-yellow-500 font-bold">
+                        <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-2">
+                          <span className="text-yellow-500 font-bold text-xs sm:text-sm">
                             {"⭐".repeat(post.ratings || 0)}
                           </span>
                           <span className="text-xs text-gray-500 flex items-center">
-                            <Heart size={14} className="mr-1" />{" "}
+                            <Heart size={12} className="mr-0.5 sm:mr-1 flex-shrink-0" />{" "}
                             {post.likes?.length || 0}
                           </span>
                           <span className="text-xs text-gray-500 flex items-center">
-                            <MessageCircle size={14} className="mr-1" />{" "}
+                            <MessageCircle size={12} className="mr-0.5 sm:mr-1 flex-shrink-0" />{" "}
                             {post.comments?.length || 0}
                           </span>
                         </div>
@@ -793,12 +804,12 @@ const FavoritesPage = () => {
 
       {/* Stats at the bottom */}
       {!loading && favoritePosts.length > 0 && (
-        <Paper elevation={0} className="mt-6 p-4 stats-card">
-          <Typography variant="subtitle2" gutterBottom className="stats-title">
-            <BarChart2 size={18} style={{ marginRight: 8 }} /> Favorites
+        <Paper elevation={0} className="mt-4 sm:mt-6 p-3 sm:p-4 stats-card">
+          <Typography variant="subtitle2" gutterBottom className="stats-title" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
+            <BarChart2 size={16} style={{ marginRight: 6 }} /> Favorites
             Statistics
           </Typography>
-          <Grid container spacing={2} className="mt-1">
+          <Grid container spacing={1} className="mt-0.5 sm:mt-1">
             <Grid item xs={6} sm={3}>
               <div className="text-center">
                 <Typography variant="h6" className="stat-value">

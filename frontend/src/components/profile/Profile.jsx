@@ -150,7 +150,7 @@ const Profile = () => {
       <div className="min-h-screen flex flex-col">
         <Header />
         {/* Main Layout */}
-        <div className="flex flex-1 flex-col md:flex-row gap-4 p-4 pb-24 md:pb-4">
+        <div className="flex flex-1 flex-col md:flex-row gap-4 p-4 pb-24 md:pb-4 mb-16 md:mb-0">
           {/* Left Sidebar sticky on md+ */}
           <aside className="hidden md:flex md:flex-col md:w-20 lg:w-64">
             <Leftsidebar />

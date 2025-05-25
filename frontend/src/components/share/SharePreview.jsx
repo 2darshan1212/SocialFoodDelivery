@@ -176,6 +176,7 @@ const SharePreview = ({ platform, post, message, user, shareLink, onClose }) => 
             src={post.video || post.image}
             className="h-full w-full object-cover"
             onError={handleMediaError}
+            autoPlay
             muted={isMuted}
             loop
             playsInline

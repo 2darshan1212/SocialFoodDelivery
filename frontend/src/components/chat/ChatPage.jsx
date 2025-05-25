@@ -242,7 +242,7 @@ const ChatPage = () => {
   );
 
   return (
-    <div className="h-[calc(100vh-100px)] relative mb-2">
+    <div className="h-[calc(100vh-100px)] relative mb-16">
       {/* Always show menu button on small screens */}
       {isMobile && (
         <div className="absolute top-2 right-2 z-50">
@@ -255,8 +255,8 @@ const ChatPage = () => {
         {selectedUser ? (
           <section className="flex flex-col h-full">
             {/* Chat Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-300 bg-white sticky top-0 z-10">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-gray-300 bg-white sticky top-0 z-10">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <Avatar
                   alt={selectedUser.username}
                   src={selectedUser.profilePicture}
@@ -311,7 +311,7 @@ const ChatPage = () => {
             )}
 
             {/* Message Input */}
-            <div className="flex items-center gap-2 p-3 border-t border-gray-300 bg-white">
+            <div className="flex items-center gap-1 sm:gap-2 p-2 sm:p-3 border-t border-gray-300 bg-white">
               {/* File upload button */}
               <input
                 type="file"
@@ -337,14 +337,18 @@ const ChatPage = () => {
                   e.key === "Enter" && !e.shiftKey && sendMessageHandler(selectedUser?._id)
                 }
                 placeholder="Type a message..."
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base sm:px-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <Button
                 variant="contained"
                 color="primary"
                 disabled={(!textMessage.trim() && !selectedFile) || isSending}
                 onClick={() => sendMessageHandler(selectedUser?._id)}
-                sx={{ minWidth: "80px" }}
+                sx={{ 
+                  minWidth: { xs: "60px", sm: "80px" },
+                  px: { xs: 1, sm: 2 },
+                  fontSize: { xs: "0.75rem", sm: "0.875rem" }
+                }}
               >
                 {isSending ? (
                   <CircularProgress size={22} color="inherit" />
@@ -356,13 +360,13 @@ const ChatPage = () => {
           </section>
         ) : (
           // No user selected UI
-          <div className="flex flex-col items-center justify-center h-full text-center text-gray-600 relative">
-            <MessageCircleCode className="w-24 h-24 mb-4 text-blue-500" />
-            <h1 className="text-xl font-bold">Your Messages</h1>
-            <p className="text-sm">
+          <div className="flex flex-col items-center justify-center h-full text-center text-gray-600 relative px-4">
+            <MessageCircleCode className="w-16 h-16 sm:w-24 sm:h-24 mb-3 sm:mb-4 text-blue-500" />
+            <h1 className="text-lg sm:text-xl font-bold">Your Messages</h1>
+            <p className="text-xs sm:text-sm px-2 max-w-xs">
               {isMobile 
-                ? "Tap the menu icon to select a conversation" 
-                : "No conversation selected"}
+                ? "Tap the menu icon in the top right to select a conversation" 
+                : "No conversation selected. Select a conversation to start chatting."}
             </p>
           </div>
         )}

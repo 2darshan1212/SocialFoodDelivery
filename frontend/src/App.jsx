@@ -3,6 +3,7 @@ import SolanaWalletProvider from "./components/wallet/SolanaWalletProvider";
 import StoryProtocolProvider from "./providers/StoryProtocolProvider";
 import { SocketProvider } from "./context/SocketContext.jsx";
 import Signup from "./components/Auth/Signup";
+import RequireAuth from "./components/Auth/RequireAuth";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import MainLayout from "./components/mainlayout/MainLayout";
 import Login from "./components/Auth/Login";
@@ -49,7 +50,7 @@ import DeliveryAgentsManagement from "./components/admin/DeliveryAgentsManagemen
 const browserRouter = createBrowserRouter([
   {
     path: "/",
-    element: <MainLayout />,
+    element: <RequireAuth><MainLayout /></RequireAuth>,
     children: [
       {
         path: "/",
@@ -83,19 +84,19 @@ const browserRouter = createBrowserRouter([
   },
   {
     path: "/profile/:id",
-    element: <Profile />,
+    element: <RequireAuth><Profile /></RequireAuth>,
   },
   {
     path: "profile/:id/account/edit",
-    element: <EditProfile />,
+    element: <RequireAuth><EditProfile /></RequireAuth>,
   },
   {
     path: "/cartPage",
-    element: <Cart />,
+    element: <RequireAuth><Cart /></RequireAuth>,
   },
   {
     path: "/chat",
-    element: <ChatLayout />,
+    element: <RequireAuth><ChatLayout /></RequireAuth>,
     children: [
       {
         path: "/chat/chatpage",
@@ -105,12 +106,12 @@ const browserRouter = createBrowserRouter([
   },
   {
     path: "/shared/:shareId",
-    element: <SharedPost />,
+    element: <RequireAuth><SharedPost /></RequireAuth>,
   },
   // Admin Routes
   {
     path: "/admin",
-    element: <AdminLayout />,
+    element: <RequireAuth><AdminLayout /></RequireAuth>,
     children: [
       {
         path: "dashboard",
@@ -141,12 +142,12 @@ const browserRouter = createBrowserRouter([
   // Admin debug route
   {
     path: "/admin-check",
-    element: <AdminCheck />,
+    element: <RequireAuth><AdminCheck /></RequireAuth>,
   },
   // Delivery Routes
   {
     path: "/deliver",
-    element: <DeliveryLayout />,
+    element: <RequireAuth><DeliveryLayout /></RequireAuth>,
     children: [
       {
         path: "dashboard",

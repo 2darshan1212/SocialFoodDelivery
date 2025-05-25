@@ -41,7 +41,7 @@ const MainLayout = () => {
         <div className="fixed bottom-0 left-0 right-0 block md:hidden bg-white border-t shadow-lg z-50">
           <div className="flex justify-around items-center h-16">
             <MobileNavItem icon={<Home size={24} />} label="Home" path="/" />
-            <MobileNavItem icon={<Bell size={24} />} label="Notifications" path="/notifications" />
+            <MobileNavItem icon={<Bell size={24} />} label="Notifications" path="#" />
             <MobileNavItem icon={<PlusSquare size={24} />} label="Post" path="/create-post" isPostButton={true} />
             <MobileNavItem icon={<MessageCircle size={24} />} label="Messages" path="/chat/chatpage" />
             <button 

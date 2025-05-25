@@ -656,51 +656,71 @@ const CartPage = () => {
   // Render cart items
   const renderCartItems = () => (
     <TableContainer component={Paper} sx={{ overflowX: "auto", mb: 3 }}>
-      <Table sx={{ minWidth: 600 }} aria-label="cart table">
+      <Table sx={{ minWidth: { xs: 320, sm: 600 } }} aria-label="cart table">
         <TableHead>
           <TableRow>
-            <TableCell>Item</TableCell>
-            <TableCell align="right">Quantity</TableCell>
-            <TableCell align="right">Unit Price</TableCell>
-            <TableCell align="right">Total</TableCell>
-            <TableCell align="right">Actions</TableCell>
+            <TableCell sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 } }}>Item</TableCell>
+            <TableCell align="right" sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 } }}>Quantity</TableCell>
+            <TableCell align="right" sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 }, display: { xs: 'none', sm: 'table-cell' } }}>Unit Price</TableCell>
+            <TableCell align="right" sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 } }}>Total</TableCell>
+            <TableCell align="right" sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 } }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {cartItems && cartItems.length > 0 ? (
             cartItems.map((item) => (
               <TableRow key={item._id}>
-                <TableCell>
+                <TableCell sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     {item.image && (
                       <CardMedia
                         component="img"
-                        sx={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 1, mr: 2 }}
+                        sx={{ 
+                          width: { xs: 40, sm: 60 }, 
+                          height: { xs: 40, sm: 60 }, 
+                          objectFit: 'cover', 
+                          borderRadius: 1, 
+                          mr: { xs: 1, sm: 2 }
+                        }}
                         image={item.image}
                         alt={item.name}
                       />
                     )}
-                    <Typography variant="body1">{item.name}</Typography>
+                    <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem', md: '1rem' } }}>
+                      {item.name}
+                    </Typography>
                   </Box>
                 </TableCell>
-                <TableCell align="right">
+                <TableCell align="right" sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                     <Button
                       onClick={() => handleDecreaseQuantity(item)}
                       variant="outlined"
                       color="error"
                       size="small"
-                      sx={{ minWidth: 30, width: 30, height: 30, p: 0 }}
+                      sx={{ 
+                        minWidth: { xs: 24, sm: 30 }, 
+                        width: { xs: 24, sm: 30 }, 
+                        height: { xs: 24, sm: 30 }, 
+                        p: 0 
+                      }}
                     >
                       -
                     </Button>
-                    <Typography sx={{ mx: 1 }}>{item.quantity}</Typography>
+                    <Typography sx={{ mx: { xs: 0.5, sm: 1 }, fontSize: { xs: '0.75rem', sm: 'inherit' } }}>
+                      {item.quantity}
+                    </Typography>
                     <Button
                       onClick={() => handleIncreaseQuantity(item)}
                       variant="outlined"
                       color="success"
                       size="small"
-                      sx={{ minWidth: 30, width: 30, height: 30, p: 0 }}
+                      sx={{ 
+                        minWidth: { xs: 24, sm: 30 }, 
+                        width: { xs: 24, sm: 30 }, 
+                        height: { xs: 24, sm: 30 }, 
+                        p: 0 
+                      }}
                     >
                       +
                     </Button>
@@ -711,25 +731,29 @@ const CartPage = () => {
                     </Typography>
                   )}
                 </TableCell>
-                <TableCell align="right">₹{item.price}</TableCell>
-                <TableCell align="right">₹{(item.quantity * item.price).toFixed(2)}</TableCell>
-                <TableCell align="right">
+                <TableCell align="right" sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 }, display: { xs: 'none', sm: 'table-cell' } }}>₹{item.price}</TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 } }}>
+                  <Typography sx={{ fontSize: { xs: '0.75rem', sm: 'inherit' } }}>₹{(item.quantity * item.price).toFixed(2)}</Typography>
+                </TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1.5, sm: 2 }, px: { xs: 1, sm: 2 } }}>
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                     <IconButton 
                       color="primary" 
                       size="small" 
                       onClick={() => handleSaveForLater(item)}
                       title="Save for later"
+                      sx={{ padding: { xs: 0.5, sm: 1 } }}
                     >
-                      <Favorite fontSize="small" />
+                      <Favorite sx={{ fontSize: { xs: 16, sm: 20 } }} />
                     </IconButton>
                     <IconButton 
                       color="error" 
                       size="small" 
                       onClick={() => handleRemoveFromCart(item)}
                       title="Remove from cart"
+                      sx={{ padding: { xs: 0.5, sm: 1 } }}
                     >
-                      <Delete fontSize="small" />
+                      <Delete sx={{ fontSize: { xs: 16, sm: 20 } }} />
                     </IconButton>
                   </Box>
                 </TableCell>
@@ -821,9 +845,9 @@ const CartPage = () => {
 
   // Render delivery form
   const renderDeliveryForm = () => (
-    <Box sx={{ mt: 2 }}>
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>
+    <Box sx={{ mt: { xs: 1, sm: 2 } }}>
+      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+        <Typography variant="h6" sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }} gutterBottom>
           Delivery Information
         </Typography>
         
@@ -916,9 +940,9 @@ const CartPage = () => {
 
   // Render payment form
   const renderPaymentForm = () => (
-    <Box sx={{ mt: 2 }}>
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>
+    <Box sx={{ mt: { xs: 1, sm: 2 } }}>
+      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+        <Typography variant="h6" sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }} gutterBottom>
           Payment Method
         </Typography>
         
@@ -982,24 +1006,24 @@ const CartPage = () => {
 
   // Render order summary
   const renderOrderSummary = () => (
-    <Paper sx={{ p: 3, mb: 3 }}>
-      <Typography variant="h6" gutterBottom>
+    <Paper sx={{ p: { xs: 2, sm: 3 }, mb: { xs: 2, sm: 3 } }}>
+      <Typography variant="h6" sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }} gutterBottom>
         Order Summary
       </Typography>
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-        <Typography variant="body1">Subtotal</Typography>
-        <Typography variant="body1">₹{subtotal.toFixed(2)}</Typography>
+        <Typography variant="body2" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>Subtotal</Typography>
+        <Typography variant="body2" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>₹{subtotal.toFixed(2)}</Typography>
       </Box>
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-        <Typography variant="body1">Tax (7%)</Typography>
-        <Typography variant="body1">₹{tax.toFixed(2)}</Typography>
+        <Typography variant="body2" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>Tax (7%)</Typography>
+        <Typography variant="body2" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>₹{tax.toFixed(2)}</Typography>
       </Box>
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-        <Typography variant="body1">Delivery Fee</Typography>
-        <Typography variant="body1">₹{deliveryFee.toFixed(2)}</Typography>
+        <Typography variant="body2" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>Delivery Fee</Typography>
+        <Typography variant="body2" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>₹{deliveryFee.toFixed(2)}</Typography>
       </Box>
       
       {discount > 0 && (
@@ -1016,8 +1040,8 @@ const CartPage = () => {
       <Divider sx={{ my: 2 }} />
       
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-        <Typography variant="h6">Total</Typography>
-        <Typography variant="h6">₹{total.toFixed(2)}</Typography>
+        <Typography variant="h6" sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>Total</Typography>
+        <Typography variant="h6" sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}>₹{total.toFixed(2)}</Typography>
       </Box>
       
       {/* Promo Code Section */}
@@ -1037,7 +1061,16 @@ const CartPage = () => {
               disabled={checkout.appliedPromoCode !== null}
               error={!!promoError}
               helperText={promoError}
-              sx={{ mr: 1, flexGrow: 1 }}
+              sx={{ 
+                mr: 1, 
+                flexGrow: 1,
+                '& .MuiInputBase-input': {
+                  fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                },
+                '& .MuiFormHelperText-root': {
+                  fontSize: { xs: '0.65rem', sm: '0.75rem' }
+                }
+              }}
             />
             
             {checkout.appliedPromoCode ? (
@@ -1045,7 +1078,9 @@ const CartPage = () => {
                 variant="outlined"
                 color="error"
                 onClick={handleRemovePromoCode}
-                startIcon={<Refresh />}
+                startIcon={<Refresh size={16} />}
+                size="small"
+                sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
               >
                 Remove
               </Button>
@@ -1054,6 +1089,8 @@ const CartPage = () => {
                 variant="contained"
                 onClick={handleApplyPromoCode}
                 disabled={!promoCode}
+                size="small"
+                sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
               >
                 Apply
               </Button>
@@ -1072,9 +1109,9 @@ const CartPage = () => {
 
   // Render order review
   const renderOrderReview = () => (
-    <Box sx={{ mt: 2 }}>
-      <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>
+    <Box sx={{ mt: { xs: 1, sm: 2 } }}>
+      <Paper sx={{ p: { xs: 2, sm: 3 } }}>
+        <Typography variant="h6" sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }} gutterBottom>
           Review Your Order
         </Typography>
         
@@ -1116,19 +1153,19 @@ const CartPage = () => {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Item</TableCell>
-                <TableCell align="right">Qty</TableCell>
-                <TableCell align="right">Price</TableCell>
-                <TableCell align="right">Total</TableCell>
+                <TableCell sx={{ py: { xs: 1, sm: 1.5 }, px: { xs: 1, sm: 2 }, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Item</TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.5 }, px: { xs: 1, sm: 2 }, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Qty</TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.5 }, px: { xs: 1, sm: 2 }, fontSize: { xs: '0.75rem', sm: '0.875rem' }, display: { xs: 'none', sm: 'table-cell' } }}>Price</TableCell>
+                <TableCell align="right" sx={{ py: { xs: 1, sm: 1.5 }, px: { xs: 1, sm: 2 }, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>Total</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {cartItems.map((item) => (
                 <TableRow key={item._id}>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell align="right">{item.quantity}</TableCell>
-                  <TableCell align="right">₹{item.price}</TableCell>
-                  <TableCell align="right">₹{(item.quantity * item.price).toFixed(2)}</TableCell>
+                  <TableCell sx={{ py: { xs: 1, sm: 1.5 }, px: { xs: 1, sm: 2 }, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{item.name}</TableCell>
+                  <TableCell align="right" sx={{ py: { xs: 1, sm: 1.5 }, px: { xs: 1, sm: 2 }, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>{item.quantity}</TableCell>
+                  <TableCell align="right" sx={{ py: { xs: 1, sm: 1.5 }, px: { xs: 1, sm: 2 }, fontSize: { xs: '0.75rem', sm: '0.875rem' }, display: { xs: 'none', sm: 'table-cell' } }}>₹{item.price}</TableCell>
+                  <TableCell align="right" sx={{ py: { xs: 1, sm: 1.5 }, px: { xs: 1, sm: 2 }, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>₹{(item.quantity * item.price).toFixed(2)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1140,33 +1177,40 @@ const CartPage = () => {
 
   // Render success message
   const renderSuccessMessage = () => (
-    <Box sx={{ mt: 2, textAlign: 'center' }}>
-      <Paper sx={{ p: 4 }}>
-        <Check sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+    <Box sx={{ mt: { xs: 1, sm: 2 }, textAlign: 'center' }}>
+      <Paper sx={{ p: { xs: 3, sm: 4 } }}>
+        <Check sx={{ fontSize: { xs: 48, sm: 64 }, color: 'success.main', mb: { xs: 1, sm: 2 } }} />
         
-        <Typography variant="h5" gutterBottom>
+        <Typography variant="h5" sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }} gutterBottom>
           Order Placed Successfully!
         </Typography>
         
-        <Typography variant="body1" paragraph>
+        <Typography variant="body1" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }} paragraph>
           Thank you for your order. Your order has been placed and is being processed.
         </Typography>
         
-        <Typography variant="body2" color="text.secondary" paragraph>
+        <Typography variant="body2" sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }} color="text.secondary" paragraph>
           You will receive an email confirmation shortly.
         </Typography>
         
-        <Box sx={{ mt: 3 }}>
+        <Box sx={{ mt: { xs: 2, sm: 3 }, display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 1, sm: 0 } }}>
           <Button 
             variant="contained" 
             color="primary" 
             onClick={() => navigate('/')}
-            sx={{ mr: 2 }}
+            sx={{ 
+              mr: { sm: 2 },
+              mb: { xs: 1, sm: 0 },
+              fontSize: { xs: '0.75rem', sm: '0.875rem' }
+            }}
+            size="small"
           >
             Continue Shopping
           </Button>
           <Button 
-            variant="outlined" 
+            variant="outlined"
+            size="small" 
+            sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
             onClick={() => {
               const orderId = localStorage.getItem('lastOrderId');
               if (orderId) {
@@ -1401,28 +1445,52 @@ const CartPage = () => {
 
   // Main render
   return (
-    <div className="container mx-auto px-4 py-8">
-      <Typography variant="h4" gutterBottom>Your Cart</Typography>
+    <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 mb-16">
+      <Typography variant="h5" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }} gutterBottom>Your Cart</Typography>
 
       {/* Tabs */}
       <Tabs 
         value={activeTab} 
         onChange={handleTabChange} 
         aria-label="cart tabs"
-        sx={{ mb: 3 }}
+        sx={{ 
+          mb: { xs: 2, sm: 3 },
+          '& .MuiTab-root': { 
+            fontSize: { xs: '0.75rem', sm: '0.875rem' },
+            minHeight: { xs: '48px', sm: '48px' },
+            py: { xs: 1, sm: 1.5 },
+            px: { xs: 1, sm: 2 }
+          }
+        }}
         variant="scrollable"
         scrollButtons="auto"
       >
-        <Tab icon={<ShoppingCart />} label="Shopping Cart" />
-        <Tab icon={<Favorite />} label="Saved Items" />
-        <Tab icon={<History />} label="Order History" />
+        <Tab icon={<ShoppingCart size={18} />} label="Shopping Cart" />
+        <Tab icon={<Favorite size={18} />} label="Saved Items" />
+        <Tab icon={<History size={18} />} label="Order History" />
       </Tabs>
 
       {/* Shopping Cart Tab with Checkout Flow */}
       {activeTab === 0 && (
         <>
           {/* Show stepper only during checkout process */}
-          <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
+          <Stepper 
+            activeStep={activeStep} 
+            sx={{ 
+              mb: { xs: 2, sm: 4 },
+              '& .MuiStepLabel-label': {
+                fontSize: { xs: '0.7rem', sm: '0.875rem' }
+              },
+              '& .MuiStepIcon-root': {
+                fontSize: { xs: '1.2rem', sm: '1.5rem' }
+              },
+              '& .MuiSvgIcon-root': {
+                width: { xs: '1.2rem', sm: '1.5rem' },
+                height: { xs: '1.2rem', sm: '1.5rem' }
+              }
+            }}
+            alternativeLabel
+          >
             {steps.map((label, index) => (
               <Step key={label}>
                 <StepLabel>{label}</StepLabel>
@@ -1457,18 +1525,37 @@ const CartPage = () => {
           )}
 
           {/* Navigation buttons for checkout process */}
-          <Box sx={{ display: 'flex', flexDirection: 'row', pt: 2 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: 'row', 
+            pt: { xs: 1, sm: 2 },
+            pb: { xs: 2, sm: 0 }
+          }}>
             <Button
               color="inherit"
               disabled={activeStep === 0 || activeStep === steps.length}
               onClick={handleBack}
-              sx={{ mr: 1 }}
+              sx={{ 
+                mr: 1,
+                fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                py: { xs: 0.5, sm: 0.75 },
+                px: { xs: 1, sm: 2 }
+              }}
+              size="small"
             >
               Back
             </Button>
             <Box sx={{ flex: '1 1 auto' }} />
             {activeStep === steps.length ? (
-              <Button onClick={() => navigate('/')}>
+              <Button 
+                onClick={() => navigate('/')}
+                sx={{ 
+                  fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                  py: { xs: 0.5, sm: 0.75 },
+                  px: { xs: 1, sm: 2 }
+                }}
+                size="small"
+              >
                 Continue Shopping
               </Button>
             ) : (
@@ -1476,6 +1563,12 @@ const CartPage = () => {
                 onClick={activeStep === steps.length - 1 ? handlePlaceOrder : handleNext}
                 variant="contained"
                 disabled={cartItems.length === 0 && activeStep === 0}
+                sx={{ 
+                  fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                  py: { xs: 0.5, sm: 0.75 },
+                  px: { xs: 1, sm: 2 }
+                }}
+                size="small"
               >
                 {activeStep === steps.length - 1 ? 'Place Order' : 'Next'}
               </Button>
