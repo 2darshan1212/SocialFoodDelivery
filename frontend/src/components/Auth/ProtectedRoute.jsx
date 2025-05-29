@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSelector } from 'react-redux';
+import tokenManager from '../../utils/tokenManager';
 
 // Loading spinner component
 const LoadingSpinner = () => (
@@ -18,6 +19,7 @@ const LoadingSpinner = () => (
 const ProtectedRoute = ({ redirectPath = '/login' }) => {
   const { isAuthenticated, loading, user } = useAuth();
   const [initialCheck, setInitialCheck] = useState(false);
+  const location = useLocation();
   
   // Also check Redux store for authentication state as backup
   const reduxUser = useSelector((state) => state.auth?.user);
@@ -30,39 +32,43 @@ const ProtectedRoute = ({ redirectPath = '/login' }) => {
   });
   
   useEffect(() => {
-    // First check if we have a token
-    const token = localStorage.getItem('token');
+    // Ensure tokens are synchronized across all storage mechanisms
+    tokenManager.initializeTokens();
     
-    // Combine authentication sources: context auth state or Redux user or token existence
+    // Get token using the centralized token manager
+    const token = tokenManager.getToken();
+    
+    // Check all authentication sources
     const authenticated = isAuthenticated || hasReduxUser || !!token;
     
-    // If we have initial data, update the decision
-    if (!initialCheck || !authDecision.isLoading) {
-      setAuthDecision({
-        isLoading: loading && !initialCheck,
-        isAuthenticated: authenticated
-      });
-      
-      if (!initialCheck) {
-        setInitialCheck(true);
-      }
+    // Log authentication state for debugging
+    console.log(`Auth check (${location.pathname})`, {
+      contextAuth: isAuthenticated,
+      reduxAuth: hasReduxUser, 
+      tokenManagerAuth: !!token,
+      finalDecision: authenticated
+    });
+    
+    // Update auth decision
+    setAuthDecision({
+      isLoading: loading && !initialCheck,
+      isAuthenticated: authenticated
+    });
+    
+    if (!initialCheck) {
+      setInitialCheck(true);
     }
-  }, [isAuthenticated, loading, hasReduxUser, initialCheck]);
+  }, [isAuthenticated, loading, hasReduxUser, initialCheck, location.pathname, tokenManager]);
   
-  // Force set token in cookie on component mount
+  // Force reinforcement of token on component mount and location changes
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = tokenManager.getToken();
     if (token) {
-      // Set cookie based on environment
-      if (window.location.protocol === 'https:') {
-        document.cookie = `token=${token}; path=/; SameSite=None; Secure`;
-      } else {
-        // For development on HTTP
-        document.cookie = `token=${token}; path=/; SameSite=Lax; max-age=86400`;
-      }
-      console.log('Protected route: Ensured token cookie is set');
+      // Use tokenManager to ensure token is properly stored in all mechanisms
+      tokenManager.setToken(token);
+      console.log(`Protected route: Token reinforced via tokenManager (${location.pathname})`);
     }
-  }, []);
+  }, [location.pathname]);
 
   // Show loading spinner while checking authentication
   if (authDecision.isLoading) {
@@ -71,8 +77,10 @@ const ProtectedRoute = ({ redirectPath = '/login' }) => {
 
   // Redirect to login if not authenticated
   if (!authDecision.isAuthenticated) {
-    console.log('User not authenticated, redirecting to', redirectPath);
-    return <Navigate to={redirectPath} replace />;
+    console.log('User not authenticated, redirecting to', redirectPath, 'from', location.pathname);
+    // Store the attempted URL for redirect after login
+    sessionStorage.setItem('redirectAfterLogin', location.pathname);
+    return <Navigate to={redirectPath} replace state={{ from: location }} />;
   }
 
   // Render the protected route

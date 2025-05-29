@@ -1,5 +1,6 @@
 import { io } from "socket.io-client";
 import { SERVER_URL } from "../utils/apiConfig";
+import tokenManager from "../utils/tokenManager";
 
 // Socket event constants
 export const SOCKET_EVENTS = {
@@ -49,14 +50,26 @@ export const initSocket = (userId, isDeliveryAgent = false, agentId = null) => {
       return null;
     }
 
-    // Get auth token for socket authentication
-    const token = localStorage.getItem('token');
+    // Ensure tokens are synchronized across all storage mechanisms
+    tokenManager.initializeTokens();
+    
+    // Get token using the centralized token manager
+    const token = tokenManager.getToken();
+    
+    // Log authentication status
+    if (token) {
+      console.log('Authentication token found for socket connection');
+    } else {
+      console.warn('No authentication token available for socket connection');
+    }
     
     // Prepare query parameters
     const query = {
       userId,
       // Include token in query for socket authentication
       token: token || '',
+      // Include token in auth header format as well (some servers check this)
+      auth: token ? `Bearer ${token}` : ''
     };
     
     // Add delivery agent info if applicable
@@ -64,6 +77,14 @@ export const initSocket = (userId, isDeliveryAgent = false, agentId = null) => {
       query.isDeliveryAgent = true;
       query.agentId = agentId;
     }
+    
+    // Log the auth state for debugging
+    console.log('Socket authentication state:', {
+      userId,
+      hasToken: !!token,
+      isDeliveryAgent,
+      agentId: agentId || 'N/A'
+    });
     
     console.log(`Initializing socket connection to ${SOCKET_SERVER_URL}`);
     
@@ -78,6 +99,12 @@ export const initSocket = (userId, isDeliveryAgent = false, agentId = null) => {
       timeout: 20000,               // Longer connection timeout
       withCredentials: true,        // Send cookies for auth
       autoConnect: true,            // Connect immediately
+      extraHeaders: {
+        // Include token in headers for services that check headers
+        'Authorization': token ? `Bearer ${token}` : '',
+        'x-auth-token': token || '',
+        'token': token || ''
+      },
     });
 
     // Enhanced event handlers for better debugging
@@ -114,12 +141,25 @@ export const initSocket = (userId, isDeliveryAgent = false, agentId = null) => {
     socket.on('reconnect_attempt', (attemptNumber) => {
       console.log(`Socket reconnection attempt #${attemptNumber}`);
       
-      // On reconnect, update the token in case it changed
-      const currentToken = localStorage.getItem('token');
+      // Ensure tokens are synchronized on reconnect attempts
+      tokenManager.initializeTokens();
+      const currentToken = tokenManager.getToken();
+      
+      // Update the socket query and headers with the token
       socket.io.opts.query = {
         ...socket.io.opts.query,
         token: currentToken || '',
+        auth: currentToken ? `Bearer ${currentToken}` : ''
       };
+      
+      // Update headers as well for comprehensive token inclusion
+      socket.io.opts.extraHeaders = {
+        'Authorization': currentToken ? `Bearer ${currentToken}` : '',
+        'x-auth-token': currentToken || '',
+        'token': currentToken || ''
+      };
+      
+      console.log(`Socket reconnection attempt #${attemptNumber} with updated token`);
     });
     
     return socket;

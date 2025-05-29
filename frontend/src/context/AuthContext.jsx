@@ -4,6 +4,7 @@ import axiosInstance from '../utils/axiosInstance';
 import { API_BASE_URL } from '../utils/apiConfig';
 import { setAuthUser } from '../redux/authSlice';
 import { toast } from 'react-toastify';
+import tokenManager from '../utils/tokenManager';
 
 // Create context
 const AuthContext = createContext();
@@ -14,6 +15,8 @@ export const AuthProvider = ({ children, navigate }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [authMessage, setAuthMessage] = useState("");
+  const [suppressAuthMessages, setSuppressAuthMessages] = useState(false);
   const dispatch = useDispatch();
 
   // Helper function to safely get cached user data from Redux storage
@@ -39,32 +42,92 @@ export const AuthProvider = ({ children, navigate }) => {
   const verifyTokenInBackground = async (token) => {
     try {
       console.log('Verifying token validity with backend...');
-      const response = await axiosInstance.get('/user/me');
       
-      if (response.data && response.data.success) {
-        console.log('Token is valid, user is authenticated');
-        // Store user data in context and Redux
-        setUser(response.data.user);
-        dispatch(setAuthUser({
-          ...response.data.user,
-          isAdmin: response.data.user.isAdmin || false,
-        }));
-        setIsAuthenticated(true);
-      } else {
-        console.log('Invalid token response', response.data);
-        setIsAuthenticated(false);
-        setUser(null);
-        // Clear invalid token
-        localStorage.removeItem('token');
-        document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      // CRITICAL: Ensure token is attached to the request in all formats
+      // 1. Add token to the Authorization header manually
+      const requestConfig = {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-auth-token': token,
+          'token': token
+        },
+        // Add token as query parameter
+        params: {
+          _auth: token
+        },
+        // Ensure cookies are sent
+        withCredentials: true
+      };
+      
+      // First test the basic diagnostic endpoint to ensure connectivity
+      try {
+        console.log('Testing basic connectivity with echo endpoint...');
+        const echoUrl = `${SERVER_URL}/api/v1/diagnostics/echo`;
+        const echoResponse = await axios.get(echoUrl);
+        console.log('Echo test successful:', echoResponse.data);
+        
+        // Now test if we can properly pass authentication data
+        console.log('Testing auth headers reception...');
+        const headersUrl = `${SERVER_URL}/api/v1/diagnostics/headers`;
+        const headersResponse = await axios.get(headersUrl, requestConfig);
+        console.log('Headers test successful:', headersResponse.data);
+        
+        // Test the auth-test endpoint to see which token source is being detected
+        console.log('Testing which token source is detected...');
+        const authTestUrl = `${SERVER_URL}/api/v1/diagnostics/auth-test`;
+        const authTestResponse = await axios.get(authTestUrl, requestConfig);
+        console.log('Auth test successful:', authTestResponse.data);
+        
+        // Finally, verify the token directly with the backend
+        console.log('Directly verifying token with backend...');
+        const verifyUrl = `${SERVER_URL}/api/v1/diagnostics/verify-token`;
+        const verifyResponse = await axios.post(verifyUrl, { token });
+        console.log('Token verification result:', verifyResponse.data);
+        
+        if (verifyResponse.data.success) {
+          console.log('Token is valid! Using it to get user data');
+          
+          // With verified token, now try the actual user endpoint
+          const userUrl = `${SERVER_URL}/api/v1/user/me`;
+          console.log('Attempting to get user data from:', userUrl);
+          const response = await axios.get(userUrl, requestConfig);
+          console.log('User data retrieved successfully!');
+          
+          // If we get here, we have a valid user response
+          return response;
+        }
+      } catch (error) {
+        console.error('Diagnostic tests failed:', error.message);
+        console.log('Details:', error?.response?.data || 'No response data');
+        throw error;
       }
+      
+      // If we reach here, we couldn't get a valid user response
+      console.log('Could not complete authentication verification');
+      
+      // Try to use cached user data as a fallback
+      const cachedUser = tryGetCachedUser();
+      if (cachedUser) {
+        console.log('Using cached user data as fallback');
+        setUser(cachedUser);
+        setIsAuthenticated(true);
+        return;
+      }
+
+      // If no cached data, we have to consider the auth failed
+      console.log('No cached user data available, authentication failed');
+      setIsAuthenticated(false);
+      setUser(null);
+      
+      // Clear potentially invalid token
+      tokenManager.clearToken();
+      throw new Error('Authentication verification failed');
     } catch (error) {
       console.error('Error verifying token:', error);
       // Check if error is unauthorized
       if (error.response && error.response.status === 401) {
-        // Token is invalid, clear it
-        localStorage.removeItem('token');
-        document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        // Token is invalid, clear it using tokenManager
+        tokenManager.clearToken();
         setIsAuthenticated(false);
         setUser(null);
       } else {
@@ -90,16 +153,17 @@ export const AuthProvider = ({ children, navigate }) => {
         console.log('Starting authentication check...');
         setLoading(true);
         
-        // First, check for token
-        const token = localStorage.getItem('token');
+        // Initialize and synchronize tokens across all storage mechanisms
+        tokenManager.initializeTokens();
         
-        if (!token) {
-          console.log('No token found, user is not authenticated');
-          setIsAuthenticated(false);
-          setUser(null);
-          setLoading(false);
-          return;
+        // Get token using the centralized token manager
+        const token = tokenManager.getToken();
+        
+        // If token exists, ensure it's properly stored in all mechanisms
+        if (token) {
+          tokenManager.setToken(token);
         }
+        console.log('Ensured token is available in all storage mechanisms');
         
         // IMMEDIATELY USE CACHED DATA IF AVAILABLE BEFORE ANY API CALLS
         // This ensures the UI loads without waiting for network
@@ -113,14 +177,9 @@ export const AuthProvider = ({ children, navigate }) => {
           console.log('No cached user data found, will wait for API response');
         }
         
-        // Set the auth cookie regardless
-        if (window.location.protocol === 'https:') {
-          document.cookie = `token=${token}; path=/; SameSite=None; Secure`;
-        } else {
-          // For development on HTTP
-          document.cookie = `token=${token}; path=/; SameSite=Lax; max-age=86400`;
-        }
-        console.log('Set auth cookie from localStorage token');
+        // Log token status for debugging
+        console.log('Using authentication token:', token ? 'Present (Hidden for security)' : 'Not found');
+        console.log('Token is being managed by tokenManager');
         
         // Set a timeout to force complete loading if backend verification takes too long
         // This only affects the loading indicator, not the authentication state
@@ -174,24 +233,26 @@ export const AuthProvider = ({ children, navigate }) => {
           isAdmin: response.data.user.isAdmin || false,
         };
         
-        // Save auth token
+        // Save auth token using centralized tokenManager
         if (response.data.token) {
-          console.log('Saving auth token to localStorage and cookies');
+          console.log('Saving auth token using tokenManager');
           const token = response.data.token;
           
-          // Store in localStorage for frontend use
-          localStorage.setItem('token', token);
+          // Store token in all storage mechanisms
+          tokenManager.setToken(token);
           
-          // Set cookie for backend authentication
-          if (window.location.protocol === 'https:') {
-            document.cookie = `token=${token}; path=/; SameSite=None; Secure`;
-          } else {
-            // For development on HTTP
-            document.cookie = `token=${token}; path=/; SameSite=Lax; max-age=86400`;
-          }
-          
-          console.log('Set cookies:', document.cookie);
+          console.log('Token set successfully using tokenManager');
         }
+        
+        // Skip showing auth delay messages completely
+        setSuppressAuthMessages(true);
+        
+        // Set a timeout to verify the user's authentication in the background
+        setTimeout(() => {
+          // Clear the delay message timeout if verification starts before message shows
+          clearTimeout(authDelayMessageId);
+          verifyTokenInBackground(response.data.token);
+        }, 500);
         
         setUser(userData);
         dispatch(setAuthUser(userData));
@@ -213,8 +274,8 @@ export const AuthProvider = ({ children, navigate }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    // Use tokenManager to clear token from all storage mechanisms
+    tokenManager.clearToken();
     setIsAuthenticated(false);
     setUser(null);
     
@@ -227,8 +288,10 @@ export const AuthProvider = ({ children, navigate }) => {
     isAuthenticated,
     loading,
     user,
+    authMessage: suppressAuthMessages ? "" : authMessage,
     login,
     logout,
+    setAuthMessage, // Allow components to clear the message
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

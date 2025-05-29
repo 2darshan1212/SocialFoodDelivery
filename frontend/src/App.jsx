@@ -1,7 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import SolanaWalletProvider from "./components/wallet/SolanaWalletProvider";
 import StoryProtocolProvider from "./providers/StoryProtocolProvider";
 import { SocketProvider } from "./context/SocketContext.jsx";
+import tokenManager from "./utils/tokenManager";
 import AuthProviderWithRouter from "./components/Auth/AuthProviderWithRouter";
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
 import { createBrowserRouter, RouterProvider, Navigate, Outlet } from "react-router-dom";
@@ -288,6 +289,14 @@ const App = () => {
   const { connected } = useSelector((store) => store.socket);
   const { unreadCounts } = useSelector((store) => store.chat); 
   const dispatch = useDispatch();
+  
+  // Initialize tokens when app loads to ensure proper authentication
+  useEffect(() => {
+    console.log('Initializing authentication tokens on app start');
+    tokenManager.initializeTokens();
+  }, []);
+  
+  // Token initialization handled by tokenManager above
   
   // Initialize user-specific cart when user logs in or out
   useEffect(() => {

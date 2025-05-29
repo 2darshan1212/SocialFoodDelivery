@@ -1,51 +1,59 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "axios";
+import axiosInstance from "../utils/axiosInstance";
+import tokenManager from "../utils/tokenManager";
 
 // API base URL from environment or default to localhost
 const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "https://socialfooddelivery-2.onrender.com";
+  import.meta.env.VITE_API_URL || "http://localhost:8000";
+  
+console.log('Redux auth slice using API_BASE_URL:', API_BASE_URL);
 
 // Login thunk action with enhanced error handling and token storage
 export const loginUser = createAsyncThunk(
-  "auth/login",
+  "auth/loginUser",
   async (userData, { rejectWithValue, dispatch }) => {
     try {
       console.log('Attempting login with credentials:', { email: userData.email });
       
-      const response = await axios.post(
-        `${API_BASE_URL}/api/v1/user/login`,
-        userData,
-        { 
-          withCredentials: true,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Client-Source': 'frontend-auth-component',
-          } 
+      // Using the correct endpoint path based on the routes file
+      console.log('Using API_BASE_URL:', API_BASE_URL);
+      
+      // Based on the routes file, the correct login endpoint is /login
+      // without any prefix or /user prefix
+      console.log('Using correct login endpoint: /login');
+      const response = await axiosInstance.post('/login', userData, {
+        headers: {
+          'X-Auth-Skip-Timeout': 'true'
         }
-      );
-
+      });
+      
+      // Pre-store the token immediately for fast access
+      if (response && response.data?.token) {
+        // Store in memory for immediate access by axiosInstance
+        window._authToken = response.data.token;
+        
+        // Update axios default headers for all future requests
+        axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
+      }
+      
       // Check for successful login
       if (response.data.success) {
         // Extract token if provided in the response
         if (response.data.token) {
-          // Store token in localStorage for backup authentication method
-          localStorage.setItem('token', response.data.token);
-          console.log('Token stored in localStorage');
+          // Use centralized tokenManager for consistent token storage
+          console.log('Storing token using tokenManager');
+          tokenManager.setToken(response.data.token);
           
-          // Also store in sessionStorage as secondary backup
-          sessionStorage.setItem('token', response.data.token);
-          
-          // Set token in cookies manually as well
-          const isSecure = window.location.protocol === 'https:';
-          const cookieAttributes = [
-            'path=/',
-            `max-age=${7 * 24 * 60 * 60}`,
-            isSecure ? 'Secure' : '',
-            isSecure ? 'SameSite=None' : 'SameSite=Lax'
-          ].filter(Boolean).join('; ');
-          
-          document.cookie = `token=${response.data.token}; ${cookieAttributes}`;
-          console.log('Token also stored in cookie');
+          // Verify token was properly stored
+          setTimeout(() => {
+            const storedToken = tokenManager.getToken();
+            if (storedToken) {
+              console.log('Token successfully stored and retrieved with tokenManager');
+            } else {
+              console.error('Failed to store token with tokenManager');
+            }
+          }, 100);
         } else {
           // The backend should have set the cookie, but log for debugging
           console.log('No explicit token in response, relying on HttpOnly cookie from server');
@@ -99,15 +107,7 @@ export const syncUserBookmarks = createAsyncThunk(
 
       // First try: dedicated endpoint to get current user profile with bookmarks
       try {
-        const response = await axios.get(
-          `${API_BASE_URL}/api/v1/user/profile`,
-          {
-            withCredentials: true,
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-          }
-        );
+        const response = await axiosInstance.get('/user/profile');
 
         if (
           response.data.success &&
@@ -129,15 +129,7 @@ export const syncUserBookmarks = createAsyncThunk(
 
       // Second try: use bookmarked posts endpoint
       try {
-        const postsResponse = await axios.get(
-          `${API_BASE_URL}/api/v1/post/bookmarked`,
-          {
-            withCredentials: true,
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-          }
-        );
+        const postsResponse = await axiosInstance.get('/post/bookmarked');
 
         if (
           postsResponse.data.success &&

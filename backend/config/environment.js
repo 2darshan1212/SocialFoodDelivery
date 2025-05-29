@@ -74,7 +74,8 @@ export default {
       'jwt',
       'token',
       'Origin',
-      'X-Client-Origin'
+      'X-Client-Origin',
+      'x-client-source'
     ],
     CREDENTIALS: true,
     // Additional CORS settings for cookie handling

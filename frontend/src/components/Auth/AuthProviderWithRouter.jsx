@@ -11,16 +11,10 @@ const AuthConsumer = ({ children }) => {
   const { loading } = useAuth();
   const [authFailed, setAuthFailed] = useState(false);
   
-  // If authentication takes more than 5 seconds, assume there might be issues
+  // Disable authentication delay warnings completely
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (loading) {
-        setAuthFailed(true);
-        console.warn('Authentication is taking longer than expected');
-      }
-    }, 5000);
-    
-    return () => clearTimeout(timeoutId);
+    // No timeouts - this prevents the auth delay message
+    return () => {};
   }, [loading]);
   
   return (

@@ -21,39 +21,20 @@ const AuthLoader = ({ children, loading, authFailed }) => {
     const forceShowTimeout = setTimeout(() => {
       console.log('Force showing content due to loading timeout');
       setShowChildren(true);
-      setShowTimeoutMessage(true);
     }, 3000);
 
     // Cleanup timeout
     return () => clearTimeout(forceShowTimeout);
   }, [loading]);
 
-  // If we're showing children (either normally or forced), return them
+  useEffect(() => {
+    // No timeout messages will be shown
+    return () => {};
+  }, [loading]);
+
+  // If we're showing children (either normally or forced), return them without any delay messages
   if (showChildren) {
-    return (
-      <>
-        {children}
-        {showTimeoutMessage && (
-          <Box 
-            sx={{
-              position: 'fixed',
-              bottom: 16,
-              right: 16,
-              zIndex: 2000,
-              backgroundColor: 'rgba(0,0,0,0.7)',
-              color: 'white',
-              padding: 2,
-              borderRadius: 1,
-              maxWidth: 300
-            }}
-          >
-            <Typography variant="body2">
-              Authentication is taking longer than expected. You can continue browsing while we verify your credentials.
-            </Typography>
-          </Box>
-        )}
-      </>
-    );
+    return children;
   }
 
   // Standard loading state - will only show for max 3 seconds

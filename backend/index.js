@@ -27,6 +27,7 @@ import categoryRoute from "./routes/category.route.js";
 import deliveryAgentRoute from "./routes/deliveryAgent.route.js";
 import testRoute from "./routes/test.route.js";
 import authDebugRoute from "./routes/authDebug.route.js";
+import diagnosticsRoute from "./routes/diagnostics.route.js";
 import { app, server, io } from "./socket/socket.js";
 
 dotenv.config({});
@@ -34,55 +35,39 @@ dotenv.config({});
 const PORT = env.PORT;
 //middlewares
 // Configure CORS to accept requests from both production and development environments
-// Enhanced CORS middleware to ensure all requests from the production deployment work correctly
+// Enhanced CORS with better cross-origin authentication support
+const allowedOrigins = env.cors.ALLOWED_ORIGINS || ['http://localhost:5173', 'http://localhost:3000'];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, postman)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is allowed
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('localhost')) {
+      console.log('CORS: Allowed origin:', origin);
+      return callback(null, true);
+    } else {
+      console.log('CORS: Blocked origin:', origin);
+      return callback(null, false);
+    }
+  },
+  credentials: true, // Important for cookies/auth
+  exposedHeaders: ['Authorization', 'x-auth-token', 'token', 'set-cookie'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'token', 'x-requested-with']
+}));
+
+// Add detailed CORS debugging middleware
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const allowedOrigins = env.cors.ALLOWED_ORIGINS;
-  
-  // Check if the request origin is allowed or if using wildcard pattern matching
-  const isAllowed = 
-    allowedOrigins.includes(origin) || 
-    allowedOrigins.some(allowed => {
-      // Handle wildcard patterns like https://*.onrender.com
-      if (allowed.includes('*')) {
-        const pattern = allowed.replace('*', '.*');
-        return new RegExp(pattern).test(origin);
-      }
-      return false;
-    });
-
-  // Set appropriate CORS headers based on origin
-  if (isAllowed) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    console.log(`CORS: Allowed origin: ${origin}`);
-  } else if (origin) {
-    console.log(`CORS: Rejected origin: ${origin}`);
-  }
-
-    // Set other CORS headers
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', env.cors.METHODS.join(', '));
-  
-  // Enhanced header handling to fix the cache-control CORS issue
-  const allowedHeaders = env.cors.ALLOWED_HEADERS.join(', ');
-  res.setHeader('Access-Control-Allow-Headers', allowedHeaders);
-  
-  // Additional exposed headers
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, X-Requested-With, Authorization, set-cookie');
-  
-  // Detailed CORS logging for debugging
+  // Log detailed information for OPTIONS requests (preflight)
   if (req.method === 'OPTIONS') {
     console.log('CORS Preflight Request:');
     console.log(`- Origin: ${req.headers.origin}`);
     console.log(`- Request Method: ${req.headers['access-control-request-method']}`);
     console.log(`- Request Headers: ${req.headers['access-control-request-headers']}`);
-    
-    // Extended preflight response for browsers
-    res.setHeader('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
-    return res.status(204).end();
   }
   
-  return next();
+  next();
 });
 
 // Make io available throughout the app
@@ -122,6 +107,16 @@ app.use("/api/v1/category", categoryRoute);
 app.use("/api/v1/delivery", deliveryAgentRoute);
 app.use("/api/v1/test", testRoute);
 app.use("/api/v1/auth-debug", authDebugRoute);
+app.use("/api/v1/diagnostics", diagnosticsRoute);
+
+// Also add a direct echo route for testing the base API structure
+app.get('/api/echo', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'API echo endpoint is working',
+    timestamp: new Date().toISOString()
+  });
+});
 
 //Routes
 
@@ -205,6 +200,8 @@ server.listen(PORT, async () => {
 
 // Graceful shutdown handling
 const gracefulShutdown = async (signal) => {
+  // Set the shutdown flag to prevent infinite loops
+  isShuttingDown = true;
   console.log(`Received ${signal}. Starting graceful shutdown...`);
 
   try {
@@ -212,27 +209,42 @@ const gracefulShutdown = async (signal) => {
     console.log("Closing change streams...");
     await closeChangeStreams();
 
-    // Close the server
-    console.log("Closing HTTP server...");
-    server.close(() => {
-      console.log("HTTP server closed.");
-
-      // Close database connection
-      console.log("Closing database connection...");
-      mongoose.connection.close(false, () => {
-        console.log("Database connection closed.");
-        process.exit(0);
+    // Create a promise that resolves when the server closes
+    const closeServer = () => {
+      return new Promise((resolve) => {
+        console.log("Closing HTTP server...");
+        server.close(() => {
+          console.log("HTTP server closed.");
+          resolve();
+        });
       });
-    });
+    };
 
-    // Force close after timeout
+    // Wait for server to close
+    await closeServer();
+
+    // Close database connection using Promise-based approach
+    console.log("Closing database connection...");
+    try {
+      await mongoose.connection.close();
+      console.log("Database connection closed successfully.");
+    } catch (dbError) {
+      console.error("Error closing database connection:", dbError.message);
+      // Continue shutdown even if DB connection close fails
+    }
+
+    console.log("Shutdown complete. Exiting process.");
+    // Exit gracefully
+    process.exit(0);
+  } catch (error) {
+    console.error("Error during shutdown:", error);
+    process.exit(1);
+  } finally {
+    // Force close after timeout as a fallback
     setTimeout(() => {
       console.error("Forced shutdown after timeout!");
       process.exit(1);
     }, 10000);
-  } catch (error) {
-    console.error("Error during shutdown:", error);
-    process.exit(1);
   }
 };
 
@@ -246,8 +258,19 @@ process.on("uncaughtException", (error) => {
   gracefulShutdown("uncaughtException");
 });
 
+// Keep track of shutdown state to prevent infinite loops
+let isShuttingDown = false;
+
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
-  gracefulShutdown("unhandledRejection");
+  
+  // Only trigger graceful shutdown if we're not already shutting down
+  // This prevents infinite loops when shutdown itself causes rejections
+  if (!isShuttingDown) {
+    isShuttingDown = true;
+    gracefulShutdown("unhandledRejection");
+  } else {
+    console.warn("Ignoring unhandled rejection during shutdown process");
+  }
 });
