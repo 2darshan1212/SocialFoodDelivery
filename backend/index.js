@@ -3,6 +3,12 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// ES Module equivalent of __dirname and __filename
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import connectDB from "./utils/db.js";
 import mongoose from "mongoose";
 import {
@@ -22,12 +28,10 @@ import deliveryAgentRoute from "./routes/deliveryAgent.route.js";
 import testRoute from "./routes/test.route.js";
 import authDebugRoute from "./routes/authDebug.route.js";
 import { app, server, io } from "./socket/socket.js";
-import path from "path";
 
 dotenv.config({});
 
 const PORT = env.PORT;
-const dirname = path.resolve();
 //middlewares
 // Configure CORS to accept requests from both production and development environments
 // Enhanced CORS middleware to ensure all requests from the production deployment work correctly
