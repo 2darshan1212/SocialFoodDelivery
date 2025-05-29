@@ -89,8 +89,26 @@ app.use((req, res, next) => {
 app.set("io", io);
 
 app.use(express.json());
-app.use(cookieParser());
+
+// Enhanced cookie parser configuration with production settings
+app.use(cookieParser(process.env.COOKIE_SECRET || process.env.SECRET_KEY || 'food-delivery-secret'));
+
+// Support for URL-encoded bodies
 app.use(urlencoded({ extended: true }));
+
+// Set secure headers
+app.use((req, res, next) => {
+  // Add security headers for production
+  if (process.env.NODE_ENV === 'production') {
+    // Prevent clickjacking
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    // Enable XSS protection in browsers
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Prevent MIME type sniffing
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  }
+  next();
+});
 
 //api's
 app.use("/api/v1/user", userRoute);

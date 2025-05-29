@@ -557,18 +557,77 @@ const Header = () => {
 
   const logoutHandler = async () => {
     try {
+      console.log('Logging out user and clearing all auth data...');
+      
+      // Call the backend logout endpoint to clear server-side session
       const res = await axios.get(`${API_BASE_URL}/api/v1/user/logout`, {
         withCredentials: true,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
       });
-      if (res.data.success) {
-        dispatch(setAuthUser(null));
-        dispatch(setSelectedPost(null));
-        dispatch(setPosts([]));
-        navigate("/login");
-        toast.success(res.data.message);
+      
+      // Clear all authentication data from all storage locations regardless of server response
+      // 1. Clear localStorage
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('auth');
+      
+      // 2. Clear sessionStorage
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+      sessionStorage.removeItem('auth');
+      
+      // 3. Clear all cookies with proper attributes for both secure and non-secure environments
+      const cookieOptions = ['path=/', 'max-age=0'];
+      const isSecure = window.location.protocol === 'https:';
+      if (isSecure) {
+        cookieOptions.push('secure');
+        cookieOptions.push('samesite=none');
       }
+      
+      // Clear all possible authentication cookies
+      document.cookie = `token=; ${cookieOptions.join('; ')}`;
+      document.cookie = `auth_token=; ${cookieOptions.join('; ')}`;
+      document.cookie = `jwt=; ${cookieOptions.join('; ')}`;
+      
+      // Domain-specific cookie clearing for render.com
+      if (window.location.hostname.includes('render.com')) {
+        document.cookie = `token=; domain=.onrender.com; ${cookieOptions.join('; ')}`;
+        document.cookie = `auth_token=; domain=.onrender.com; ${cookieOptions.join('; ')}`;
+      }
+      
+      // Reset all authentication-related Redux state
+      dispatch(setAuthUser(null));
+      dispatch(setSelectedPost(null));
+      dispatch(setPosts([]));
+      
+      // Show success message if server request succeeded
+      if (res.data.success) {
+        toast.success(res.data.message || 'Logged out successfully');
+      } else {
+        console.warn('Server logout returned non-success status but client-side logout completed');
+        toast.info('You have been logged out');
+      }
+      
+      // Add a slight delay before navigation to ensure state updates are processed
+      setTimeout(() => {
+        // Force navigation to login page and prevent back button from returning to authenticated pages
+        window.location.href = '/login'; // Using window.location instead of navigate for a full page reload
+      }, 100);
     } catch (error) {
-      toast.error(error.response?.data?.message || "Logout failed");
+      console.error('Logout error:', error);
+      
+      // Even if server logout fails, clear client-side auth data and redirect
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+      document.cookie = 'token=; path=/; max-age=0';
+      
+      // Show error message
+      toast.error(error.response?.data?.message || 'Logout failed on server, but you have been logged out locally');
+      
+      // Still redirect to login
+      window.location.href = '/login';
     }
   };
 

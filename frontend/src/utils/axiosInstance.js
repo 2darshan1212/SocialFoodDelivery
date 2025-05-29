@@ -177,48 +177,87 @@ instance.interceptors.response.use(
           const newToken = refreshResponse.data.token;
           localStorage.setItem('token', newToken);
           
-          // Update headers with the new token
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          originalRequest.headers['x-auth-token'] = newToken;
-          originalRequest.headers['access-token'] = newToken;
-          
-          // If the original URL had a token parameter, update it
-          if (originalRequest.url.includes('_auth=')) {
-            originalRequest.url = originalRequest.url.replace(
-              /_auth=[^&]+/, 
-              `_auth=${newToken}`
-            );
+          // Use multiple methods to ensure the refresh token request succeeds
+          const refreshResponse = await axios.post(
+            `${API_BASE_URL}/api/v1/user/refresh-token`,
+            {},
+            { 
+              withCredentials: true,
+              // Send token via all possible methods for maximum compatibility
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem("token")}`,
+                'X-Auth-Token': localStorage.getItem("token"),
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+
+          if (refreshResponse.data.token) {
+            console.log('Token refresh successful, got new token');
+            // Store the new token in multiple places
+            token = refreshResponse.data.token;
+            localStorage.setItem("token", token);
+            
+            // Also store in sessionStorage as backup
+            sessionStorage.setItem("token", token);
+            
+            // Set a cookie as well for extra reliability
+            document.cookie = `token=${token}; path=/; max-age=86400`;
           } else {
-            // Add token parameter if it wasn't there
-            const separator = originalRequest.url.includes('?') ? '&' : '?';
-            originalRequest.url = `${originalRequest.url}${separator}_auth=${newToken}`;
+            console.warn('Refresh token endpoint returned success but no token');
+            throw new Error('No token in refresh response');
+          }
+        } else {
+          console.log('Using existing token from localStorage');
+        }
+
+        // Apply the token to the original request and retry
+        originalRequest.headers.Authorization = `Bearer ${token}`;
+        originalRequest.headers["x-auth-token"] = token;
+        
+        // For render.com deployments, add the token as a URL parameter as well
+        if (isRenderDeploy || isProdToLocalDev) {
+          const separator = originalRequest.url.includes('?') ? '&' : '?';
+          originalRequest.url = `${originalRequest.url}${separator}_auth=${token}`;
+        }
+        
+        console.log('Retrying original request with new token');
+        return instance(originalRequest);
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        
+        // Only handle session expiration if this was an actual auth error
+        // and not a network error or other issue
+        if (refreshError.response && 
+            (refreshError.response.status === 401 || refreshError.response.status === 403)) {
+          console.log('Authentication definitely failed, clearing session');
+          
+          // Clear authentication state from all storage mechanisms
+          localStorage.removeItem('token');
+          sessionStorage.removeItem('token');
+          
+          // Clear all cookies related to authentication with proper attributes for production
+          const cookieOptions = ['path=/', 'max-age=0'];
+          if (isProduction) {
+            cookieOptions.push('secure');
+            cookieOptions.push('samesite=none');
           }
           
-          console.log('Token refreshed successfully, retrying request');
-          return instance(originalRequest);
+          document.cookie = `token=; ${cookieOptions.join('; ')}`;
+          document.cookie = `auth_token=; ${cookieOptions.join('; ')}`;
+          document.cookie = `jwt=; ${cookieOptions.join('; ')}`;
+          
+          // Show a friendly error message
+          const message = 'Your session has expired. Please login again.';
+          console.error(message);
+          
+          // Use a direct redirect instead of setTimeout to avoid the login loop issue
+          window.location.href = '/login';
+          
+          // Return a rejected promise with a clearer error
+          return Promise.reject(new Error('Authentication failed - redirecting to login'));
         }
-      } catch (refreshError) {
-        console.log('Token refresh failed:', refreshError.message);
       }
-      
-      // If we reach here, token refresh failed
-      // Clear authentication state
-      localStorage.removeItem('token');
-      
-      // Clear all cookies related to authentication
-      document.cookie = 'token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      document.cookie = 'auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      document.cookie = 'jwt=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      
-      // If in production, show a friendly message
-      if (isProduction) {
-        alert('Your session has expired. Please login again.');
-      }
-      
-      // Redirect to login page
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 100);
     }
     
     // For network errors in production, provide a user-friendly message

@@ -115,17 +115,28 @@ export const login = async (req, res) => {
       isAdmin: user.isAdmin || false,
     };
 
-    return res
-      .cookie("token", token, {
-        httpOnly: true,
-        sameSite: "strict",
-        maxAge: 1 * 24 * 60 * 60 * 1000,
-      })
-      .json({
-        message: `Welcome Back ${user.username}`,
-        success: true,
-        user,
-      });
+    // Configure cookie options based on environment
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    // Set proper cookie settings for cross-domain support in production
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isProduction, // Only use secure in production
+      sameSite: isProduction ? 'none' : 'lax', // 'none' allows cross-site cookies in production
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days expiration for better user experience
+      path: '/' // Ensure cookie is available throughout the site
+    };
+    
+    // Set the cookie
+    res.cookie("token", token, cookieOptions);
+    
+    // Also include the token in the response for clients that can't use cookies
+    return res.json({
+      message: `Welcome Back ${user.username}`,
+      success: true,
+      user,
+      token // Include token in response body for alternative auth methods
+    });
   } catch (error) {
     console.log(error);
   }
@@ -133,11 +144,31 @@ export const login = async (req, res) => {
 
 export const logout = async (req, res) => {
   try {
-    return res
-      .cookie("token", "", { maxAge: 0 })
-      .json({ message: "Logged Out Successfully", success: true });
+    // Configure cookie options based on environment
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    // Clear the cookie with matching settings to ensure it's properly removed
+    const cookieOptions = {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      path: '/',
+      maxAge: 0 // Setting maxAge to 0 effectively deletes the cookie
+    };
+    
+    // Clear the cookie
+    res.cookie('token', '', cookieOptions);
+    
+    return res.json({ 
+      message: "Logged Out Successfully", 
+      success: true 
+    });
   } catch (error) {
     console.log(error);
+    return res.status(500).json({
+      message: "Error during logout",
+      success: false
+    });
   }
 };
 

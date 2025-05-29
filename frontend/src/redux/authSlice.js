@@ -5,6 +5,85 @@ import axios from "axios";
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "https://socialfooddelivery-2.onrender.com";
 
+// Login thunk action with enhanced error handling and token storage
+export const loginUser = createAsyncThunk(
+  "auth/login",
+  async (userData, { rejectWithValue, dispatch }) => {
+    try {
+      console.log('Attempting login with credentials:', { email: userData.email });
+      
+      const response = await axios.post(
+        `${API_BASE_URL}/api/v1/user/login`,
+        userData,
+        { 
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Source': 'frontend-auth-component',
+          } 
+        }
+      );
+
+      // Check for successful login
+      if (response.data.success) {
+        // Extract token if provided in the response
+        if (response.data.token) {
+          // Store token in localStorage for backup authentication method
+          localStorage.setItem('token', response.data.token);
+          console.log('Token stored in localStorage');
+          
+          // Also store in sessionStorage as secondary backup
+          sessionStorage.setItem('token', response.data.token);
+          
+          // Set token in cookies manually as well
+          const isSecure = window.location.protocol === 'https:';
+          const cookieAttributes = [
+            'path=/',
+            `max-age=${7 * 24 * 60 * 60}`,
+            isSecure ? 'Secure' : '',
+            isSecure ? 'SameSite=None' : 'SameSite=Lax'
+          ].filter(Boolean).join('; ');
+          
+          document.cookie = `token=${response.data.token}; ${cookieAttributes}`;
+          console.log('Token also stored in cookie');
+        } else {
+          // The backend should have set the cookie, but log for debugging
+          console.log('No explicit token in response, relying on HttpOnly cookie from server');
+        }
+        
+        // Log success
+        console.log('Login successful, user:', response.data.user.username);
+        
+        return response.data;
+      }
+
+      return rejectWithValue(response.data.message || 'Login failed without specific error');
+    } catch (error) {
+      console.error('Login error:', error);
+      
+      const message =
+        error.response && error.response.data.message
+          ? error.response.data.message
+          : error.message || 'Network error during login';
+      
+      // Enhanced error logging
+      if (error.response) {
+        console.error('Server response error:', {
+          status: error.response.status,
+          message: error.response.data.message,
+          data: error.response.data
+        });
+      } else if (error.request) {
+        console.error('No response received:', error.request);
+      } else {
+        console.error('Request setup error:', error.message);
+      }
+      
+      return rejectWithValue(message);
+    }
+  }
+);
+
 // Create a thunk to sync bookmarks with the backend
 export const syncUserBookmarks = createAsyncThunk(
   "auth/syncUserBookmarks",
@@ -91,6 +170,10 @@ const authSlice = createSlice({
   name: "auth",
   initialState: {
     user: null,
+    loading: false,
+    error: null,
+    isAuthenticated: false,
+    lastLoginAt: null,
     suggestedUsers: [],
     userProfile: null,
     selectedUser: null,
@@ -151,6 +234,28 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // Login user reducer cases
+      .addCase(loginUser.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(loginUser.fulfilled, (state, action) => {
+        state.loading = false;
+        state.user = action.payload.user;
+        // Store login timestamp
+        state.lastLoginAt = Date.now();
+        // Log successful login in redux state
+        console.log('Login successful, user stored in Redux state');
+      })
+      .addCase(loginUser.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+        state.user = null;
+        // Log login failure
+        console.error('Login failed:', action.payload);
+      })
+      
+      // Sync bookmarks reducer cases
       .addCase(syncUserBookmarks.pending, (state) => {
         state.bookmarksLoading = true;
         state.bookmarksError = null;
