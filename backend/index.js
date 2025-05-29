@@ -2,6 +2,7 @@ import express, { urlencoded } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
+import fs from "fs";
 import connectDB from "./utils/db.js";
 import mongoose from "mongoose";
 import {
@@ -130,10 +131,47 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.use(express.static(path.join(dirname, "/frontend/dist")));
-app.get("*", (req, res) => {
-  res.sendFile(path.resolve(dirname, "/frontend/dist/index.html"));
-});
+// Correctly set up static file serving
+const distPath = path.join(__dirname, "../frontend/dist");
+
+// First, check if the directory exists before serving
+if (fs.existsSync(distPath)) {
+  // Serve static files with proper caching
+  app.use(express.static(distPath, {
+    // Set cache control headers for better performance
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        // Don't cache HTML files
+        res.setHeader('Cache-Control', 'no-cache');
+      } else if (filePath.match(/\.(js|css)$/)) {
+        // Cache JS and CSS for 1 day
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+      } else if (filePath.match(/\.(jpg|jpeg|png|gif|ico|svg)$/)) {
+        // Cache images for 7 days
+        res.setHeader('Cache-Control', 'public, max-age=604800');
+      }
+    }
+  }));
+
+  // Handle client-side routing - AFTER API routes but before sending 404s
+  app.get("*", (req, res) => {
+    // Skip API routes - they should be handled by their own handlers
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ success: false, message: 'API endpoint not found' });
+    }
+    
+    // Check if index.html exists
+    const indexPath = path.join(distPath, "index.html");
+    if (fs.existsSync(indexPath)) {
+      // For client routes, send the index.html file
+      return res.sendFile(indexPath);
+    } else {
+      return res.status(404).send('Application files not found. The app may not be built yet.');
+    }
+  });
+}
 
 server.listen(PORT, async () => {
   await connectDB();
