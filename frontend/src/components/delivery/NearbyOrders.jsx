@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchNearbyOrders, acceptDeliveryOrder, rejectDeliveryOrder } from '../../redux/deliverySlice';
+import { fetchNearbyOrders, acceptDeliveryOrder, rejectDeliveryOrder, fetchConfirmedOrders } from '../../redux/deliverySlice';
+import { useSocket } from '../../context/SocketContext.jsx';
 import { MdDirections, MdDeliveryDining, MdLocationOff, MdMyLocation, MdRefresh, MdMap, MdFastfood, MdLocalOffer } from 'react-icons/md';
 import { BsCheck2Circle, BsXCircle } from 'react-icons/bs';
 import { FiPackage, FiClock, FiAlertCircle } from 'react-icons/fi';
@@ -65,10 +66,13 @@ const LOCATION_CHANGE_THRESHOLD = 0.1; // 100 meters
 const NearbyOrders = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const socket = useSocket();
+  
   const { 
     isDeliveryAgent, 
     isAvailable, 
     nearbyOrders, 
+    confirmedOrders,
     isNearbyOrdersLoading, 
     isNearbyOrdersError,
     nearbyOrdersError,
@@ -112,26 +116,50 @@ const NearbyOrders = () => {
 
   // Fetch nearby orders function (to use in multiple places)
   const loadNearbyOrders = useCallback(() => {
-    if (isDeliveryAgent && isAvailable && position.latitude && position.longitude) {
-      dispatch(fetchNearbyOrders())
-        .unwrap()
-        .then(response => {
-          if (response.orders.length === 0) {
+    if (isDeliveryAgent && isAvailable) {
+      console.log('Loading nearby orders...');
+      setIsRefreshing(true);
+      
+      // Load both nearby orders and confirmed orders to ensure we have the complete picture
+      Promise.all([
+        dispatch(fetchNearbyOrders()).unwrap(),
+        dispatch(fetchConfirmedOrders()).unwrap()
+      ])
+        .then(([nearbyResponse, confirmedResponse]) => {
+          const totalOrders = (nearbyResponse.orders?.length || 0) + 
+                             (confirmedResponse.orders?.length || 0);
+          
+          console.log(`Fetched ${totalOrders} orders (${nearbyResponse.orders?.length || 0} nearby, ${confirmedResponse.orders?.length || 0} confirmed)`);
+          
+          if (totalOrders === 0) {
             toast.info("No orders available in your area right now");
           } else {
-            toast.success(`Found ${response.orders.length} nearby orders`);
+            toast.success(`Found ${totalOrders} available orders`);
           }
+          
+          // Store the current orders for comparison on next refresh
+          prevOrdersRef.current = [...(nearbyResponse.orders || [])];
+          
           // Update refresh key to force map refresh without rerendering parent
           setRefreshKey(prevKey => prevKey + 1);
+          
+          // If we have position, update last fetch position
+          if (position.latitude && position.longitude) {
+            setLastFetchPosition({ 
+              latitude: position.latitude, 
+              longitude: position.longitude 
+            });
+          }
         })
         .catch((error) => {
+          console.error('Error loading nearby orders:', error);
           toast.error(error || "Failed to load nearby orders");
+        })
+        .finally(() => {
+          setIsRefreshing(false);
         });
-      
-      setLastFetchPosition({ 
-        latitude: position.latitude, 
-        longitude: position.longitude 
-      });
+    } else {
+      console.log('Cannot load nearby orders: not a delivery agent or not available');
     }
   }, [dispatch, isDeliveryAgent, isAvailable, position.latitude, position.longitude]);
 
@@ -190,6 +218,70 @@ const NearbyOrders = () => {
   
   // Track previous orders for comparison
   const prevOrdersRef = useRef(nearbyOrders || []);
+  
+  // Listen for order confirmed events via socket
+  useEffect(() => {
+    if (socket && isDeliveryAgent && isAvailable) {
+      console.log('Setting up socket listeners for new orders');
+      
+      // Listen for new order confirmations
+      const handleOrderConfirmed = (data) => {
+        console.log('New order confirmed event received:', data);
+        toast.success('New order available for delivery!', {
+          icon: '🍔',
+          duration: 4000
+        });
+        
+        // Force immediate refresh to get the new order
+        dispatch(fetchNearbyOrders())
+          .unwrap()
+          .then(response => {
+            console.log('Successfully fetched new orders after confirmation:', response);
+            // Update the refresh key to force map refresh
+            setRefreshKey(prevKey => prevKey + 1);
+          })
+          .catch(error => {
+            console.error('Failed to refresh orders after new order confirmation:', error);
+          });
+      };
+      
+      socket.on('order_confirmed', handleOrderConfirmed);
+      
+      // Also add a listener for localStorage changes (for cross-tab communication)
+      const handleStorageChange = (e) => {
+        if (e.key === 'confirmedOrdersUpdated' || e.key === 'orderPlaced') {
+          console.log('Order placed in another tab, refreshing orders');
+          dispatch(fetchNearbyOrders()).unwrap()
+            .then(() => {
+              console.log('Successfully refreshed orders from storage event');
+              setRefreshKey(prevKey => prevKey + 1);
+            });
+        }
+      };
+      
+      window.addEventListener('storage', handleStorageChange);
+      
+      // Custom event from within the app
+      const handleOrderConfirmedEvent = (e) => {
+        console.log('Custom order-confirmed event received:', e.detail);
+        // Force immediate refresh with the new order
+        dispatch(fetchNearbyOrders())
+          .unwrap()
+          .then(() => {
+            console.log('Successfully refreshed orders from custom event');
+            setRefreshKey(prevKey => prevKey + 1);
+          });
+      };
+      
+      window.addEventListener('order-confirmed', handleOrderConfirmedEvent);
+      
+      return () => {
+        socket.off('order_confirmed', handleOrderConfirmed);
+        window.removeEventListener('storage', handleStorageChange);
+        window.removeEventListener('order-confirmed', handleOrderConfirmedEvent);
+      };
+    }
+  }, [socket, isDeliveryAgent, isAvailable, dispatch]);
   
   // Force load if there are no orders and we have position
   useEffect(() => {

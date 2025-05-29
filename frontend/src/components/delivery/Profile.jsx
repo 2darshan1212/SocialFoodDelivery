@@ -12,6 +12,7 @@ const Profile = () => {
   const { isDeliveryAgent, profile, isProfileLoading, isProfileError, stats } = useSelector(
     (state) => state.delivery
   );
+  const { auth } = useSelector((state) => state.auth);
 
   // Fetch agent profile on mount
   useEffect(() => {
@@ -80,15 +81,15 @@ const Profile = () => {
         <div className="md:flex">
           <div className="md:flex-shrink-0 bg-gradient-to-r from-indigo-600 to-indigo-800 md:w-48 flex items-center justify-center p-8">
             <img
-              src={user?.profilePic || 'https://via.placeholder.com/150'}
-              alt={user?.username || 'User'}
+              src={auth?.user?.profilePic || 'https://via.placeholder.com/150'}
+              alt={auth?.user?.username || 'User'}
               className="h-24 w-24 rounded-full object-cover border-4 border-white"
             />
           </div>
           <div className="p-8 w-full">
             <div className="flex flex-wrap justify-between items-start">
               <div>
-                <h1 className="text-2xl font-bold text-gray-800">{user?.username || 'User'}</h1>
+                <h1 className="text-2xl font-bold text-gray-800">{auth?.user?.username || 'User'}</h1>
                 <p className="text-gray-600">Delivery Agent</p>
                 <div className="mt-2 flex items-center">
                   <MdDirectionsBike className="text-indigo-600 mr-2" size={20} />
@@ -99,12 +100,15 @@ const Profile = () => {
                       <span>Verified</span>
                     </div>
                   ) : (
-                    <div className="ml-4 flex items-center text-amber-600">
+                    <div className="ml-4 flex items-center text-yellow-600">
                       <MdWarning size={18} className="mr-1" />
-                      <span>Pending Verification</span>
+                      <span>Not Verified</span>
                     </div>
                   )}
                 </div>
+                {auth?.user?.bio && (
+                  <p className="mt-2 text-gray-600">"{auth.user.bio}"</p>
+                )}
               </div>
               <div className="flex flex-col md:flex-row md:items-center mt-4 md:mt-0">
                 <div className="flex items-center mr-6">

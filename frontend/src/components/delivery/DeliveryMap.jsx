@@ -72,20 +72,64 @@ const DeliveryMap = ({
   // Extract and process coordinates as a separate function to ensure it reruns
   // when the agent location changes
   const getCoordinates = useCallback(() => {
+    // Agent coordinates from position object or coordinates array
     const agentCoords = agentLocation?.coordinates ? 
       [agentLocation.coordinates[1], agentLocation.coordinates[0]] : 
       [agentLocation?.latitude, agentLocation?.longitude];
     
-    const pickupCoords = pickupLocation?.coordinates ? 
-      [pickupLocation.coordinates[1], pickupLocation.coordinates[0]] : null;
+    // Process pickup coordinates - handle various data formats
+    let pickupCoords = null;
     
-    const deliveryCoords = deliveryLocation?.coordinates ? 
-      [deliveryLocation.coordinates[1], deliveryLocation.coordinates[0]] : null;
+    // Log all location data for debugging
+    console.log('DeliveryMap received pickup location data:', pickupLocation);
+    console.log('DeliveryMap received orderDetails:', orderDetails);
     
+    // Try multiple sources for pickup coordinates
+    if (pickupLocation?.coordinates && Array.isArray(pickupLocation.coordinates) && 
+        pickupLocation.coordinates.length === 2 && 
+        pickupLocation.coordinates[0] !== 0 && pickupLocation.coordinates[1] !== 0) {
+      // Standard GeoJSON format is [longitude, latitude], so we need to reverse
+      pickupCoords = [pickupLocation.coordinates[1], pickupLocation.coordinates[0]];
+      console.log('Using pickupLocation coordinates:', pickupCoords);
+    } else if (orderDetails?.restaurant?.location?.coordinates && 
+               Array.isArray(orderDetails.restaurant.location.coordinates) && 
+               orderDetails.restaurant.location.coordinates.length === 2) {
+      // Try to get from restaurant location
+      pickupCoords = [orderDetails.restaurant.location.coordinates[1], orderDetails.restaurant.location.coordinates[0]];
+      console.log('Using restaurant location coordinates for pickup:', pickupCoords);
+    }
+    
+    // Process delivery coordinates - handle various data formats
+    let deliveryCoords = null;
+    console.log('DeliveryMap received delivery location data:', deliveryLocation);
+    
+    // Try multiple sources for delivery coordinates
+    if (deliveryLocation?.coordinates && Array.isArray(deliveryLocation.coordinates) && 
+        deliveryLocation.coordinates.length === 2 && 
+        deliveryLocation.coordinates[0] !== 0 && deliveryLocation.coordinates[1] !== 0) {
+      // Standard GeoJSON format is [longitude, latitude], so we need to reverse
+      deliveryCoords = [deliveryLocation.coordinates[1], deliveryLocation.coordinates[0]];
+      console.log('Using deliveryLocation coordinates:', deliveryCoords);
+    } else if (orderDetails?.userLocation?.coordinates && 
+               Array.isArray(orderDetails.userLocation.coordinates) && 
+               orderDetails.userLocation.coordinates.length === 2) {
+      // Try to get from user location
+      deliveryCoords = [orderDetails.userLocation.coordinates[1], orderDetails.userLocation.coordinates[0]];
+      console.log('Using userLocation coordinates for delivery:', deliveryCoords);
+    } else if (orderDetails?.user?.location?.coordinates && 
+               Array.isArray(orderDetails.user.location.coordinates) && 
+               orderDetails.user.location.coordinates.length === 2) {
+      // Try to get from user object directly
+      deliveryCoords = [orderDetails.user.location.coordinates[1], orderDetails.user.location.coordinates[0]];
+      console.log('Using user.location coordinates for delivery:', deliveryCoords);
+    }
+    
+    // Return coordinates and validity check
     return {
       agentCoords,
       pickupCoords,
       deliveryCoords,
+      // Map is valid if agent has coordinates, even if other points are missing
       isValid: agentCoords && agentCoords[0] && agentCoords[1] && !isNaN(agentCoords[0]) && !isNaN(agentCoords[1])
     };
   }, [agentLocation, pickupLocation, deliveryLocation]);
@@ -263,12 +307,9 @@ const DeliveryMap = ({
             className: 'pickup-marker',
             html: `<div class="pickup-marker-icon" style="position: relative;">
                     <div class="pickup-marker-bg" style="background-color: #FF5722; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 4px rgba(255, 87, 34, 0.4), 0 0 0 8px rgba(255, 87, 34, 0.2);">
-                      <i class="pickup-icon" style="color: white; font-size: 18px;">
-                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                          <circle cx="12" cy="10" r="3"></circle>
-                        </svg>
-                      </i>
+                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                      </svg>
                     </div>
                     <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background-color: #FF5722; color: white; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 10px; white-space: nowrap;">PICKUP</div>
                   </div>`,
@@ -333,22 +374,55 @@ const DeliveryMap = ({
         } else {
           const deliveryIcon = L.divIcon({
             className: 'delivery-marker',
-            html: `<div class="delivery-marker-icon">
-                    <div class="delivery-marker-bg">
-                      <i class="delivery-icon"></i>
+            html: `<div class="delivery-marker-icon" style="position: relative;">
+                    <div class="delivery-marker-bg" style="background-color: #10b981; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.4), 0 0 0 8px rgba(16, 185, 129, 0.2);">
+                      <svg viewBox="0 0 24 24" width="18" height="18" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                      </svg>
                     </div>
+                    <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background-color: #10b981; color: white; font-weight: bold; padding: 2px 6px; border-radius: 4px; font-size: 10px; white-space: nowrap;">DELIVERY</div>
                   </div>`,
             iconSize: [40, 40],
             iconAnchor: [20, 20]
           });
           
+          // Create a more detailed popup for delivery location
+          const customerName = orderDetails?.user?.username || "Customer";
+          const deliveryAddress = orderDetails?.deliveryAddress || "Address not available";
+          const contactNumber = orderDetails?.contactNumber || "No contact number";
+          
+          const deliveryPopupContent = `
+            <div style="min-width: 180px;">
+              <div style="font-weight: bold; color: #10b981; font-size: 14px; margin-bottom: 4px;">
+                Delivery Location
+              </div>
+              <div style="font-size: 12px; margin-bottom: 4px;">
+                <span style="font-weight: bold;">Customer:</span> ${customerName}
+              </div>
+              <div style="font-size: 12px; margin-bottom: 4px;">
+                <span style="font-weight: bold;">Address:</span> ${deliveryAddress}
+              </div>
+              <div style="font-size: 12px; margin-bottom: 4px;">
+                <span style="font-weight: bold;">Contact:</span> ${contactNumber}
+              </div>
+              <div style="background-color: #f0f0f0; padding: 6px; border-radius: 4px; margin-top: 6px; font-size: 11px;">
+                This is the delivery destination. Complete the delivery and mark as delivered when done.
+              </div>
+            </div>
+          `;
+          
           deliveryMarkerRef.current = L.marker(deliveryCoords, { 
             icon: deliveryIcon,
             riseOnHover: true,
-            title: "Delivery Location" 
+            title: "Delivery Location",
+            zIndexOffset: 800 // High z-index but lower than pickup
           })
             .addTo(mapRef.current)
-            .bindPopup("<b>Delivery location</b><br>Customer address");
+            .bindPopup(deliveryPopupContent, {
+              maxWidth: 250,
+              closeButton: true
+            });
         }
         
         prevDeliveryCoordsRef.current = [...deliveryCoords];
@@ -364,18 +438,32 @@ const DeliveryMap = ({
         routeLineRef.current = null;
       }
       
-      // Draw route lines based on order status
+      // Draw route lines based on order status and available points
       const routePoints = [];
       
-      // For status "confirmed" or "preparing" - show route from agent to pickup
-      if (orderStatus === "confirmed" || orderStatus === "preparing") {
-        if (agentCoords[0] && pickupCoords && pickupCoords[0]) {
+      // Always show all available points for clarity
+      if (orderStatus === "confirmed" || orderStatus === "preparing" || !orderStatus) {
+        // If we're in pickup phase, show route from agent to pickup
+        if (agentCoords && agentCoords[0] && pickupCoords && pickupCoords[0]) {
+          // Primary route: agent to pickup
           routePoints.push(agentCoords, pickupCoords);
+          
+          // If we also have delivery coords, show a secondary route
+          if (deliveryCoords && deliveryCoords[0]) {
+            // Secondary route from pickup to delivery (show as separate line)
+            const secondaryRoute = L.polyline([pickupCoords, deliveryCoords], {
+              color: '#9CA3AF', // Gray color for secondary route
+              weight: 3,
+              opacity: 0.6,
+              dashArray: '5, 10',
+              lineCap: 'round'
+            }).addTo(mapRef.current);
+          }
         }
       } 
-      // For status "out_for_delivery" - show route from pickup to delivery
+      // For delivery phase, show route from agent to delivery
       else if (orderStatus === "out_for_delivery") {
-        if (agentCoords[0] && deliveryCoords && deliveryCoords[0]) {
+        if (agentCoords && agentCoords[0] && deliveryCoords && deliveryCoords[0]) {
           routePoints.push(agentCoords, deliveryCoords);
         }
       }
@@ -392,8 +480,27 @@ const DeliveryMap = ({
         }).addTo(mapRef.current);
       }
       
-      // Update map view/bounds only if significant changes occurred or points are out of view
-      if (agentChanged || pickupChanged || deliveryChanged) {
+      // Always fit bounds when we have multiple points (don't rely on change detection)
+      // This ensures all markers are visible on the map
+      const pointsToInclude = [];
+      
+      // Add all valid coordinates to the points list
+      if (agentCoords && agentCoords[0] && agentCoords[1]) {
+        pointsToInclude.push(agentCoords);
+      }
+      
+      if (pickupCoords && pickupCoords[0] && pickupCoords[1]) {
+        pointsToInclude.push(pickupCoords);
+      }
+      
+      if (deliveryCoords && deliveryCoords[0] && deliveryCoords[1]) {
+        pointsToInclude.push(deliveryCoords);
+      }
+      
+      console.log(`Fitting map to ${pointsToInclude.length} points`);
+      
+      // Update map view/bounds to include all points
+      if (pointsToInclude.length >= 2) {
         // Debounce bounds update to prevent flickering from rapid updates
         if (boundsTimerRef.current) {
           clearTimeout(boundsTimerRef.current);
@@ -403,26 +510,28 @@ const DeliveryMap = ({
           // Get all active points for fitting bounds
           let activePoints = [];
           if (agentCoords && agentCoords[0]) activePoints.push(agentCoords);
-          if ((orderStatus === "confirmed" || orderStatus === "preparing") && 
-              pickupCoords && pickupCoords[0]) {
-            activePoints.push(pickupCoords);
-          } else if (orderStatus === "out_for_delivery" && 
-                    deliveryCoords && deliveryCoords[0]) {
-            activePoints.push(deliveryCoords);
-          }
-          
-          if (activePoints.length > 1) {
-            const bounds = L.latLngBounds(activePoints);
-            // Only update bounds if points aren't already visible
-            if (!mapRef.current.getBounds().contains(bounds)) {
-              mapRef.current.fitBounds(bounds, { 
-                padding: [50, 50],
-                animate: false,
-                duration: 0,
-                maxZoom: 16
-              });
+          // Fit bounds with padding to ensure all markers are visible
+          boundsTimerRef.current = setTimeout(() => {
+            try {
+              // Create a bounds object that includes all points
+              if (pointsToInclude.length >= 2) {
+                const bounds = L.latLngBounds(pointsToInclude);
+                // Use a lower maxZoom to ensure we don't zoom in too far
+                mapRef.current.fitBounds(bounds, { 
+                  padding: [50, 50], 
+                  maxZoom: 15,
+                  animate: false // Disable animation to prevent jerkiness
+                });
+                console.log('Fitted map to bounds:', bounds);
+              } else if (pointsToInclude.length === 1) {
+                // If we only have one point, center on it with default zoom
+                mapRef.current.setView(pointsToInclude[0], zoom, { animate: false });
+                console.log('Centered map on single point:', pointsToInclude[0]);
+              }
+            } catch (error) {
+              console.error("Error fitting bounds:", error);
             }
-          }
+          }, 200); // Short delay to debounce
         }, 300); // Debounce for 300ms
       }
     } catch (error) {

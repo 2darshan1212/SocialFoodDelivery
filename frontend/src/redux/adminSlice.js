@@ -1,30 +1,127 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
+import axiosInstance from "../utils/axiosInstance";
+import { API_BASE_URL } from "../utils/apiConfig";
 
-const API_BASE_URL = "https://socialfooddelivery-2.onrender.com";
+// Use the centralized axiosInstance with proper auth handling
+const api = axiosInstance;
 
-// Create axios instance with credentials
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
-  timeout: 10000,
-});
+// Action to receive a new order into admin slice
+export const receiveNewOrder = createAsyncThunk(
+  "admin/receiveNewOrder",
+  async (order, { rejectWithValue }) => {
+    if (!order) {
+      return rejectWithValue("No order data provided");
+    }
+    
+    // Log the raw order data received
+    console.log("Admin receiveNewOrder raw coordinates:", {
+      pickup: order.pickupLocation?.coordinates,
+      delivery: order.deliveryLocation?.coordinates,
+      orderID: order._id
+    });
+    
+    // For orders with missing coordinates, try to extract them from related data
+    // Like user location, post author location, etc.
+    let enhancedOrder = {...order};
+    
+    // If coordinates are missing or [0,0], try to get them from additional sources
+    if (!order.pickupLocation?.coordinates || 
+        (order.pickupLocation.coordinates[0] === 0 && order.pickupLocation.coordinates[1] === 0)) {
+      // Try to get coordinates from seller/post author if available
+      if (order.postAuthor && order.postAuthor.location && order.postAuthor.location.coordinates) {
+        enhancedOrder.pickupLocation = {
+          type: "Point",
+          coordinates: order.postAuthor.location.coordinates
+        };
+        console.log("Using post author location for pickup:", enhancedOrder.pickupLocation.coordinates);
+      }
+    }
+    
+    if (!order.deliveryLocation?.coordinates || 
+        (order.deliveryLocation.coordinates[0] === 0 && order.deliveryLocation.coordinates[1] === 0)) {
+      // Try to get coordinates from buyer/user if available
+      if (order.user && order.user.location && order.user.location.coordinates) {
+        enhancedOrder.deliveryLocation = {
+          type: "Point",
+          coordinates: order.user.location.coordinates
+        };
+        console.log("Using user location for delivery:", enhancedOrder.deliveryLocation.coordinates);
+      }
+    }
+    
+    // Return the enhanced order with all available location data
+    return { order: normalizeOrder(enhancedOrder) };
+  }
+);
 
 // Normalize order data when receiving from API
 const normalizeOrder = (order) => {
   if (!order) return null;
-
-  return {
+  
+  // Set default status based on payment method
+  // For cash on delivery, set status to confirmed if it's currently processing
+  let defaultStatus = "processing";
+  if (order.paymentMethod === "cash") {
+    defaultStatus = "confirmed";
+    console.log("Admin: Cash on delivery order detected, setting default status to confirmed");
+  }
+  
+  // Create a normalized order object to return
+  const normalizedOrder = {
     ...order,
     // Ensure these fields always exist
     totalAmount: order.totalAmount || order.total || 0,
     subtotal: order.subtotal || 0,
     tax: order.tax || 0,
     deliveryFee: order.deliveryFee || 0,
-    status: order.status || "processing",
+    // For cash orders, enforce confirmed status
+    status: order.paymentMethod === "cash" ? "confirmed" : (order.status || defaultStatus),
     paymentStatus: order.paymentStatus || "pending",
     items: Array.isArray(order.items) ? order.items : [],
   };
+  
+  // Log status assignment
+  console.log(`Order ${order._id} payment method: ${order.paymentMethod}, assigned status: ${normalizedOrder.status}`);
+  
+  // Explicitly handle pickup location
+  if (order.pickupLocation) {
+    // Preserve the entire pickupLocation object, just ensure coordinates exist
+    normalizedOrder.pickupLocation = {
+      type: order.pickupLocation.type || "Point",
+      coordinates: Array.isArray(order.pickupLocation.coordinates) ? 
+        order.pickupLocation.coordinates : [0, 0]
+    };
+  } else {
+    // Create a default pickup location if none exists
+    normalizedOrder.pickupLocation = {
+      type: "Point",
+      coordinates: [0, 0]
+    };
+  }
+  
+  // Explicitly handle delivery location
+  if (order.deliveryLocation) {
+    // Preserve the entire deliveryLocation object, just ensure coordinates exist
+    normalizedOrder.deliveryLocation = {
+      type: order.deliveryLocation.type || "Point",
+      coordinates: Array.isArray(order.deliveryLocation.coordinates) ? 
+        order.deliveryLocation.coordinates : [0, 0]
+    };
+  } else {
+    // Create a default delivery location if none exists
+    normalizedOrder.deliveryLocation = {
+      type: "Point",
+      coordinates: [0, 0]
+    };
+  }
+  
+  // Log the coordinates to help with debugging
+  console.log(`Order ${order._id} normalized with coordinates:`, {
+    pickup: normalizedOrder.pickupLocation.coordinates,
+    delivery: normalizedOrder.deliveryLocation.coordinates
+  });
+  
+  return normalizedOrder;
 };
 
 // Action to fetch all orders (admin)
@@ -191,6 +288,34 @@ const adminSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // Handle receiveNewOrder action
+      .addCase(receiveNewOrder.pending, (state) => {
+        // No need to set loading state for a single order addition
+      })
+      .addCase(receiveNewOrder.fulfilled, (state, action) => {
+        if (action.payload && action.payload.order) {
+          // Check if the order already exists in the list
+          const orderExists = state.orders.data.some(
+            (order) => order._id === action.payload.order._id
+          );
+          
+          // Only add if it doesn't exist already
+          if (!orderExists) {
+            // Add the new order to the beginning of the list
+            state.orders.data.unshift(action.payload.order);
+            
+            // Update pagination counts if applicable
+            if (state.orders.pagination) {
+              state.orders.pagination.totalOrders = 
+                (state.orders.pagination.totalOrders || 0) + 1;
+            }
+          }
+        }
+      })
+      .addCase(receiveNewOrder.rejected, (state, action) => {
+        console.error("Failed to add new order to admin:", action.payload);
+      })
+      
       // Handle fetchAllOrders
       .addCase(fetchAllOrders.pending, (state) => {
         state.orders.status = "loading";

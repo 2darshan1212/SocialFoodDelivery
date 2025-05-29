@@ -31,7 +31,7 @@ import { toast } from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import useLocationTracking from "../../hooks/useLocationTracking";
 import LocationMap from './LocationMap';
-import ConfirmedOrdersMap from './ConfirmedOrdersMap';
+import AdminConfirmedOrdersList from './AdminConfirmedOrdersList';
 import { Box, Typography, Button } from "@mui/material";
 import { Refresh } from "@mui/icons-material";
 import { calculateDistance, hasLocationChangedSignificantly, formatCoordinate } from '../../utils/distanceUtils';
@@ -953,80 +953,12 @@ const Dashboard = () => {
             )}
           </div>
         )}
+        
+        {/* Admin Confirmed Orders List Section */}
+        <div className="mt-8 p-4 bg-white rounded-lg shadow-sm border border-gray-200">
+          <AdminConfirmedOrdersList />
+        </div>
       </div>
-
-      {/* Confirmed Orders Map Section */}
-      {isDeliveryAgent &&
-        isAvailable &&
-        position.latitude &&
-        position.longitude && (
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">
-                Confirmed Orders Map
-              </h2>
-              <div className="flex items-center">
-                <span className="text-xs text-gray-500 mr-2">
-                  {isLoadingConfirmedOrders ? "Loading..." : `${pickupPoints.length} orders available`}
-                </span>
-                <button
-                  onClick={() => dispatch(fetchConfirmedOrders())}
-                  className={`flex items-center text-xs bg-white border border-gray-300 rounded px-2 py-1 text-gray-700 hover:bg-gray-50 disabled:opacity-70 disabled:cursor-not-allowed ${
-                    isLoadingConfirmedOrders ? "animate-pulse" : ""
-                  }`}
-                  disabled={isLoadingConfirmedOrders}
-                >
-                  <MdRefresh
-                    className={isLoadingConfirmedOrders ? "animate-spin mr-1" : "mr-1"}
-                    size={14}
-                  />
-                  Refresh
-                </button>
-              </div>
-            </div>
-
-            {/* Confirmed Orders Map */}
-            <div className="bg-white rounded-lg shadow-sm p-2 border border-gray-200 overflow-hidden">
-              <div style={{ height: "400px", width: "100%" }}>
-                <ConfirmedOrdersMap
-                  key={`confirmed-map-${refreshKey}`}
-                  height="400px"
-                  onAcceptOrder={handleAcceptOrder}
-                />
-              </div>
-              
-              <div className="mt-2 p-2 text-xs text-gray-500">
-                <div className="flex flex-wrap gap-3">
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full mr-1"></div>
-                    <span>Your Location</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-green-500 rounded-full mr-1"></div>
-                    <span>Pickup Points ({confirmedPickupPoints.length})</span>
-                  </div>
-                  <div className="flex items-center">
-                    <div className="w-3 h-3 bg-purple-500 rounded-full mr-1"></div>
-                    <span>Delivery Locations ({confirmedDeliveryPoints.length})</span>
-                  </div>
-                </div>
-                {confirmedPickupPoints.length > 0 && (
-                  <div className="mt-2 p-2 bg-gray-50 rounded">
-                    <div className="text-xs font-medium mb-1">Recently added orders:</div>
-                    {confirmedPickupPoints.slice(0, 2).map(point => (
-                      <div key={point.orderId} className="text-xs mb-1 flex items-center">
-                        <span className="font-medium mr-1">{point.restaurantName}:</span>
-                        <span className="text-gray-600 truncate">
-                          {estimatedTravelTimes[point.orderId] ? `${estimatedTravelTimes[point.orderId]} mins away` : 'Distance calculating...'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
 
       {/* "All Available Orders" section removed as requested */}
     </div>

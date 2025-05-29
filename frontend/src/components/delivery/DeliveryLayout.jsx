@@ -1,11 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import DeliveryHeader from './DeliveryHeader';
 import DeliverySidebar from './DeliverySidebar';
 import useLocationTracking from '../../hooks/useLocationTracking';
 import { toast } from 'react-hot-toast';
-import { Home, Package, User, Menu, Map } from 'lucide-react';
+import NavigationButton from './NavigationButton';
+import { 
+  Home, 
+  MapPin, 
+  Clock, 
+  History, 
+  UserCircle2, 
+  Package 
+} from 'lucide-react';
 
 const DeliveryLayout = () => {
   const { isDeliveryAgent, isAvailable } = useSelector(state => state.delivery);
@@ -89,45 +97,40 @@ const DeliveryLayout = () => {
           onClick={() => setSidebarOpen(false)}
         ></div>
       )}
-      
+
       {/* Mobile bottom navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-30">
         <div className="flex justify-around items-center h-16">
-          <button 
-            onClick={() => navigate('/deliver/dashboard')} 
-            className="flex flex-col items-center justify-center p-2 text-gray-600 hover:text-primary-600 focus:outline-none"
-          >
-            <Home size={24} />
-            <span className="text-xs mt-1">Dashboard</span>
-          </button>
-          <button 
-            onClick={() => navigate('/deliver/orders')} 
-            className="flex flex-col items-center justify-center p-2 text-gray-600 hover:text-primary-600 focus:outline-none"
-          >
-            <Package size={24} />
-            <span className="text-xs mt-1">Orders</span>
-          </button>
-          <button 
-            onClick={() => navigate('/deliver/map')} 
-            className="flex flex-col items-center justify-center p-2 text-gray-600 hover:text-primary-600 focus:outline-none"
-          >
-            <Map size={24} />
-            <span className="text-xs mt-1">Map</span>
-          </button>
-          <button 
-            onClick={() => navigate(`/profile/${useSelector(state => state.auth.user?._id)}`)} 
-            className="flex flex-col items-center justify-center p-2 text-gray-600 hover:text-primary-600 focus:outline-none"
-          >
-            <User size={24} />
-            <span className="text-xs mt-1">Profile</span>
-          </button>
-          <button 
-            onClick={() => setSidebarOpen(true)} 
-            className="flex flex-col items-center justify-center p-2 text-gray-600 hover:text-primary-600 focus:outline-none"
-          >
-            <Menu size={24} />
-            <span className="text-xs mt-1">Menu</span>
-          </button>
+          <NavigationButton
+            icon={<Home size={24} />}
+            label="Dashboard"
+            path="/deliver/dashboard"
+            currentPath={location.pathname}
+          />
+          <NavigationButton
+            icon={<MapPin size={24} />}
+            label="Nearby"
+            path="/deliver/nearby-orders"
+            currentPath={location.pathname}
+          />
+          <NavigationButton
+            icon={<Package size={24} />}
+            label="Active"
+            path="/deliver/my-deliveries"
+            currentPath={location.pathname}
+          />
+          <NavigationButton
+            icon={<History size={24} />}
+            label="History"
+            path="/deliver/history"
+            currentPath={location.pathname}
+          />
+          <NavigationButton
+            icon={<UserCircle2 size={24} />}
+            label="Profile"
+            path="/deliver/profile"
+            currentPath={location.pathname}
+          />
         </div>
       </div>
     </div>

@@ -46,16 +46,36 @@ export const SocketProvider = ({ children }) => {
       });
 
       // Handle new confirmed order events
-      newSocket.on("order-confirmed", (data) => {
-        console.log("New confirmed order received:", data);
+      newSocket.on("order_confirmed", (data) => {
+        console.log("New confirmed order received via socket:", data);
 
         // Update the Redux store with the new confirmed order
         dispatch(fetchConfirmedOrders());
+        
+        // Make the socket instance available globally for direct usage
+        window.socket = newSocket;
+        
+        // Emit a browser event that components can listen for
+        window.dispatchEvent(new CustomEvent('order-confirmed', { 
+          detail: { order: data } 
+        }));
+        
+        // Update localStorage to notify other tabs
+        localStorage.setItem('confirmedOrdersUpdated', Date.now().toString());
 
         // Show notification if user is a delivery agent
         if (user?.isDeliveryAgent) {
-          toast.info(`New order confirmed! Order #${data.orderId.slice(-6)}`);
+          toast.success(`New order available for delivery!`, {
+            icon: '🍔',
+            duration: 4000
+          });
         }
+      });
+      
+      // Also listen for the old event name to ensure backward compatibility
+      newSocket.on("order-confirmed", (data) => {
+        console.log("Old event name: order-confirmed received:", data);
+        newSocket.emit("order_confirmed", data);
       });
 
       // Handle order status update events

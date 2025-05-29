@@ -3,6 +3,7 @@
 import { createSlice, createAsyncThunk, createAction } from "@reduxjs/toolkit";
 import axios from "axios";
 import { createNewOrder, getUserOrders } from "../services/orderService";
+import { receiveNewOrder } from "./adminSlice";
 
 // API base URL from environment or default to localhost
 const API_BASE_URL = "https://socialfooddelivery-2.onrender.com";
@@ -13,11 +14,162 @@ const resetOrderStatusAction = createAction("cart/resetOrderStatus");
 // Async thunk for placing an order
 export const placeOrder = createAsyncThunk(
   "cart/placeOrder",
-  async (orderData, { rejectWithValue, dispatch }) => {
+  async (orderData, { rejectWithValue, dispatch, getState }) => {
     try {
-      console.log("PlaceOrder thunk received data:", orderData);
-      const response = await createNewOrder(orderData);
-      console.log("PlaceOrder thunk received response:", response);
+      // Get the current state to access location coordinates
+      const state = getState();
+      
+      // Retrieve user and post data directly from auth and post slices
+      const currentUser = state.auth?.user || {};
+      const userLocation = currentUser?.location?.coordinates || [0, 0];
+      console.log("Current user location coordinates:", userLocation);
+      
+      // Get the post data if available to extract seller location
+      const postId = orderData.items?.[0]?.productId;
+      
+      // Hard-coded test coordinates - for demonstration/testing purposes
+      // IMPORTANT: Replace these with actual coordinates in production
+      const testSellerCoordinates = [77.2090, 28.6139]; // Example: Delhi
+      const testBuyerCoordinates = [72.8777, 19.0760]; // Example: Mumbai
+      
+      // For pickup coordinates, use post author's location or test coordinates
+      const pickupCoordinates = testSellerCoordinates;
+      
+      // For delivery coordinates, use current user's location or test coordinates
+      const deliveryCoordinates = testBuyerCoordinates;
+      
+      console.log("Using ACTUAL coordinates:", {
+        pickup: pickupCoordinates,
+        delivery: deliveryCoordinates
+      });
+      
+      // Construct enhanced order data with EXPLICIT coordinates
+      // Set status to "confirmed" immediately for cash on delivery orders
+      const isCashOnDelivery = orderData.paymentMethod === "cash";
+      
+      const enhancedOrderData = {
+        ...orderData,
+        // Set status to confirmed for cash on delivery orders
+        status: isCashOnDelivery ? "confirmed" : "processing",
+        pickupLocation: {
+          type: "Point",
+          coordinates: pickupCoordinates // Use explicit coordinates
+        },
+        deliveryLocation: {
+          type: "Point",
+          coordinates: deliveryCoordinates // Use explicit coordinates
+        },
+        // Include references to the post and user for location fallbacks
+        postId: postId,
+        userId: currentUser?._id
+      };
+      
+      console.log(`Order payment method: ${orderData.paymentMethod}, setting initial status to: ${enhancedOrderData.status}`);
+      
+      console.log("Sending order with EXPLICIT coordinates:", {
+        pickup: enhancedOrderData.pickupLocation.coordinates,
+        delivery: enhancedOrderData.deliveryLocation.coordinates
+      });
+      
+      const response = await createNewOrder(enhancedOrderData);
+      
+      // Dispatch the new order to the admin slice if order was successfully created
+      if (response && response.order) {
+        // Add location data directly to the order object for admin slice
+        const adminOrder = {
+          ...response.order,
+          // Ensure the status is maintained from the response
+          // For cash on delivery, this should be "confirmed"
+          status: response.order.status || (isCashOnDelivery ? "confirmed" : "processing"),
+          pickupLocation: {
+            type: "Point",
+            coordinates: pickupCoordinates // Use the explicit coordinates directly
+          },
+          deliveryLocation: {
+            type: "Point",
+            coordinates: deliveryCoordinates // Use the explicit coordinates directly
+          },
+          // Include post author and user data for additional location sources
+          postAuthor: {
+            location: {
+              type: "Point",
+              coordinates: pickupCoordinates
+            }
+          },
+          user: {
+            ...response.order.user,
+            location: {
+              type: "Point",
+              coordinates: deliveryCoordinates
+            }
+          }
+        };
+        
+        console.log("Dispatching order to admin WITH EXPLICIT coordinates:", {
+          orderId: adminOrder._id,
+          pickupCoordinates: adminOrder.pickupLocation.coordinates,
+          deliveryCoordinates: adminOrder.deliveryLocation.coordinates
+        });
+        
+        dispatch(receiveNewOrder(adminOrder));
+        
+        // If this is a cash on delivery order, it's automatically confirmed
+        // Notify the delivery system about the new confirmed order
+        if (isCashOnDelivery) {
+          console.log('Cash on delivery order confirmed, notifying delivery system');
+          
+          // 1. Dispatch a custom event that components can listen for
+          try {
+            window.dispatchEvent(new CustomEvent('order-confirmed', { 
+              detail: { order: adminOrder } 
+            }));
+            console.log('Successfully dispatched order-confirmed event');
+          } catch (error) {
+            console.error('Failed to dispatch custom event:', error);
+          }
+          
+          // 2. Store in localStorage to sync across tabs
+          try {
+            localStorage.setItem('orderPlaced', Date.now().toString());
+            localStorage.setItem('confirmedOrdersUpdated', Date.now().toString());
+            console.log('Successfully updated localStorage with order information');
+          } catch (error) {
+            console.error('Failed to update localStorage:', error);
+          }
+          
+          // 3. If socket is available, emit an event (the socket context will handle this)
+          try {
+            // Try to get socket from window or from the socket context
+            const socketInstance = window.socket;
+            
+            if (socketInstance) {
+              console.log('Socket instance found, emitting order_confirmed event');
+              socketInstance.emit('order_confirmed', adminOrder);
+              console.log('Successfully emitted order_confirmed event via socket');
+            } else {
+              console.warn('No socket instance available for emitting order event');
+              
+              // As a fallback, try to use the server endpoint directly
+              const token = localStorage.getItem('token');
+              if (token) {
+                try {
+                  // Make a direct API call to notify about the new order
+                  axios.post(`${API_BASE_URL}/api/v1/delivery/notify-new-order`, 
+                    { order: adminOrder },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                  );
+                  console.log('Sent direct API notification about new order');
+                } catch (apiError) {
+                  console.error('Failed to send direct notification:', apiError);
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Failed to emit socket event:', error);
+          }
+        }
+      }
+      
       return response;
     } catch (error) {
       console.error("PlaceOrder thunk error:", error);
@@ -650,6 +802,13 @@ const cartSlice = createSlice({
         state.orderStatus = "succeeded";
         // Add the new order to the orders list
         if (action.payload && action.payload.order) {
+          // Force "confirmed" status for Cash on Delivery orders
+          if (action.payload.order.paymentMethod === "cash" && 
+              action.payload.order.status !== "confirmed") {
+            console.log("Redux: Forcing confirmed status for Cash on Delivery order");
+            action.payload.order.status = "confirmed";
+          }
+          
           state.orders.unshift(action.payload.order);
           state.currentOrderId = action.payload.order._id;
           // Clear the cart after successful order

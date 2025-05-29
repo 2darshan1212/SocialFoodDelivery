@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { fetchAgentProfile, completeDeliveryOrder, fetchDeliveryHistory } from '../../redux/deliverySlice';
+import { fetchAgentProfile, completeDeliveryOrder, fetchDeliveryHistory, fixActiveDeliveryCoordinates } from '../../redux/deliverySlice';
 import { 
   MdDirections, 
   MdDeliveryDining, 
@@ -78,7 +78,21 @@ const MyDeliveries = () => {
   // Initial load
   useEffect(() => {
     refreshProfile();
-  }, [refreshProfile]);
+    
+    // Debug: Log active orders coordinates when component mounts
+    if (activeOrders && activeOrders.length > 0) {
+      console.log('Active orders on mount:', activeOrders.length);
+      activeOrders.forEach(order => {
+        console.log(`Order ${order._id} pickup:`, order.pickupLocation?.coordinates);
+        console.log(`Order ${order._id} delivery:`, order.deliveryLocation?.coordinates);
+        console.log(`Order ${order._id} restaurant:`, order.restaurant?.location?.coordinates);
+        console.log(`Order ${order._id} user:`, order.userLocation?.coordinates);
+      });
+    }
+    
+    // Fix any active deliveries with [0,0] coordinates
+    dispatch(fixActiveDeliveryCoordinates());
+  }, [refreshProfile, activeOrders, dispatch]);
 
   // Handle tab change
   useEffect(() => {
@@ -463,8 +477,8 @@ const MyDeliveries = () => {
                       <DeliveryMap 
                         key={`map-${order._id}`}
                         agentLocation={position}
-                        pickupLocation={order.pickupLocation}
-                        deliveryLocation={order.deliveryLocation}
+                        pickupLocation={order.restaurant?.location || order.pickupLocation}
+                        deliveryLocation={order.userLocation || order.deliveryLocation}
                         orderStatus={order.status}
                         height="350px"
                         orderDetails={order} // Pass the entire order object for detailed pickup information
@@ -876,7 +890,10 @@ const MyDeliveries = () => {
                       Processing...
                     </span>
                   ) : (
-                    'Complete Delivery'
+                    <>
+                      <MdCheck className="mr-2" size={18} />
+                      <span>Complete Delivery</span>
+                    </>
                   )}
                 </button>
               </div>

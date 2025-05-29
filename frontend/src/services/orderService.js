@@ -68,9 +68,30 @@ api.interceptors.response.use(
 // Create a new order
 export const createNewOrder = async (orderData) => {
   try {
-    console.log("Creating order with data:", orderData);
+    // Ensure cash orders are marked as confirmed
+    if (orderData.paymentMethod === "cash" && (!orderData.status || orderData.status === "processing")) {
+      console.log("Cash on delivery order detected, setting status to confirmed");
+      orderData.status = "confirmed";
+    }
+    
+    console.log("Creating order with data:", { 
+      ...orderData,
+      paymentMethod: orderData.paymentMethod,
+      status: orderData.status
+    });
+    
     const response = await api.post("/orders/create", orderData);
-    console.log("Order creation response:", response.data);
+    
+    // If it's a cash order but the status was changed by the server, override it back to confirmed
+    if (orderData.paymentMethod === "cash" && 
+        response.data && 
+        response.data.order && 
+        response.data.order.status !== "confirmed") {
+      console.log("Overriding server response to ensure cash order is confirmed");
+      response.data.order.status = "confirmed";
+    }
+    
+    console.log("Order creation response status:", response.data?.order?.status);
     return response.data;
   } catch (error) {
     console.error("Order creation error:", error);
