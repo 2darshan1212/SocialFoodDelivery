@@ -2,10 +2,15 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from "react"
 import { useSelector, useDispatch } from "react-redux";
 import { useSocket } from "../../context/SocketContext.jsx";
 import {
-  fetchAgentProfile,
+  setAgentAvailability,
+  setAgentLocation,
+  fetchActiveDeliveries,
+  updateDeliveryStatus,
   fetchNearbyOrders,
   acceptDeliveryOrder,
   rejectDeliveryOrder,
+  completeDeliveryOrder,
+  fetchAgentProfile,
 } from "../../redux/deliverySlice";
 import {
   fetchConfirmedOrders,
@@ -416,20 +421,44 @@ const Dashboard = () => {
   // Handle rejecting an order - use useCallback to prevent recreation on renders
   const handleRejectOrder = useCallback(
     (orderId) => {
+      console.log(`Dashboard handleRejectOrder called with orderId: ${orderId}`);
+      
+      if (!orderId) {
+        console.error('Invalid order ID provided to handleRejectOrder');
+        toast.error('Cannot reject order: Missing order ID');
+        return;
+      }
+      
+      // Prevent multiple rejections
+      if (rejectingOrderId) {
+        console.log(`Already rejecting order ${rejectingOrderId}, ignoring new request`);
+        return;
+      }
+      
       setRejectingOrderId(orderId);
+      console.log(`Set rejectingOrderId to ${orderId}, dispatching rejectDeliveryOrder action`);
 
       dispatch(rejectDeliveryOrder(orderId))
         .unwrap()
-        .then(() => {
+        .then((result) => {
+          console.log(`Order ${orderId} rejected successfully:`, result);
           toast.success("Order rejected successfully");
-          setRejectingOrderId(null);
+          
+          // Refresh nearby orders after a short delay
+          setTimeout(() => {
+            dispatch(fetchNearbyOrders());
+          }, 500);
         })
         .catch((error) => {
-          toast.error(error || "Failed to reject order");
+          console.error(`Error rejecting order ${orderId}:`, error);
+          toast.error(typeof error === 'string' ? error : "Failed to reject order");
+        })
+        .finally(() => {
+          console.log(`Resetting rejectingOrderId from ${rejectingOrderId} to null`);
           setRejectingOrderId(null);
         });
     },
-    [dispatch]
+    [dispatch, rejectingOrderId]
   );
 
   // Refresh nearby orders with debounce

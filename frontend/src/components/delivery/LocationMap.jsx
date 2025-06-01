@@ -552,7 +552,7 @@ const LocationMap = ({
                   iconAnchor: isActive ? [12, 12] : [10, 10]
                 });
                 
-                // Create popup content
+                // Create popup content with improved buttons
                 const popupContent = `
                   <div class="order-popup">
                     <div class="order-popup-title">
@@ -575,14 +575,21 @@ const LocationMap = ({
                         <span>Status:</span> <span>${order.status.replace('_', ' ')}</span>
                       </div>` : ''}
                     </div>
-                    <div class="order-popup-actions">
-                      ${order.status === 'out_for_delivery' && order.deliveryAgent ? `
+                    ${order.status === 'out_for_delivery' && order.deliveryAgent ? `
+                      <div class="order-popup-actions">
                         <button class="popup-button popup-accept" data-order-id="${order._id}">Navigate</button>
-                      ` : `
-                        <button class="popup-button popup-accept" data-order-id="${order._id}">Accept</button>
-                        <button class="popup-button popup-reject" data-order-id="${order._id}">Reject</button>
-                      `}
-                    </div>
+                      </div>
+                    ` : `
+                      <div class="order-popup-actions" style="display: flex; justify-content: space-between; margin-top: 10px;">
+                        <button class="popup-button popup-accept" data-order-id="${order._id}" style="flex: 1; margin-right: 5px; background-color: #10B981; color: white; border: none; padding: 8px; border-radius: 4px;">Accept</button>
+                        <button 
+                          class="popup-button popup-reject" 
+                          data-order-id="${order._id}" 
+                          style="flex: 1; margin-left: 5px; background-color: #EF4444; color: white; border: none; padding: 8px; border-radius: 4px;"
+                          onclick="(function(e) { e.stopPropagation(); e.preventDefault(); console.log('Reject clicked for ${order._id}'); window.lastRejectedOrderId = '${order._id}'; })(event); setTimeout(function() { if(typeof window.mapRejectCallback === 'function') { window.mapRejectCallback('${order._id}'); } }, 10); return false;"
+                        >Reject</button>
+                      </div>
+                    `}
                   </div>
                 `;
                 
@@ -684,15 +691,47 @@ const LocationMap = ({
                         });
                       });
                       
-                      // Handle reject button clicks
+                      // Handle reject button clicks - SIMPLIFIED DIRECT APPROACH
                       document.querySelectorAll(`.popup-reject[data-order-id="${order._id}"]`).forEach(button => {
-                        button.addEventListener('click', (e) => {
+                        // Remove the button and create a completely new one
+                        const container = button.parentNode;
+                        const newButton = document.createElement('button');
+                        newButton.innerText = 'Reject';
+                        newButton.className = button.className;
+                        newButton.dataset.orderId = order._id;
+                        
+                        // Replace the old button
+                        container.removeChild(button);
+                        container.appendChild(newButton);
+                        
+                        // Add direct onclick function instead of event listener
+                        newButton.onclick = function(e) {
                           e.preventDefault();
-                          if (onRejectClick) {
-                            onRejectClick(order._id);
-                            popup.close();
+                          e.stopPropagation();
+                          
+                          console.log(`[${new Date().toISOString()}] Reject button clicked for order: ${order._id}`);
+                          
+                          // Close popup immediately to prevent multiple clicks
+                          popup.close();
+                          
+                          // Immediately call the reject handler
+                          if (onRejectClick && typeof onRejectClick === 'function') {
+                            console.log(`[${new Date().toISOString()}] Calling reject handler for order ${order._id}`);
+                            
+                            // Call the reject handler directly
+                            try {
+                              onRejectClick(order._id);
+                            } catch (err) {
+                              console.error('Error calling reject handler:', err);
+                              alert(`Failed to reject order: ${err.message || 'Unknown error'}`); 
+                            }
+                          } else {
+                            console.error('onRejectClick is not available', { onRejectClick });
+                            alert('Cannot reject order: Reject function not available');
                           }
-                        });
+                          
+                          return false; // Prevent default and stop propagation
+                        };
                       });
                     }
                   }, 10);

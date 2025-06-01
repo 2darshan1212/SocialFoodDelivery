@@ -173,11 +173,30 @@ export const acceptOrder = async (orderId) => {
 // Reject an order (don't want to deliver it)
 export const rejectOrder = async (orderId) => {
   try {
-    const response = await api.post(`/delivery/reject/${orderId}`);
-    return response.data;
+    console.log(`Calling reject API for order: ${orderId}`);
+    
+    // Make sure orderId is valid
+    if (!orderId) {
+      throw new Error('Invalid order ID provided to reject function');
+    }
+    
+    // Log the full URL being called
+    const url = `/delivery/reject/${orderId}`;
+    console.log(`Making POST request to: ${url}`);
+    
+    const response = await api.post(url);
+    console.log('Reject order API response:', response.data);
+    
+    // Return response with orderId included for easier tracking
+    return {
+      ...response.data,
+      orderId
+    };
   } catch (error) {
-    console.error("Failed to reject order:", error);
-    throw error;
+    console.error(`Failed to reject order ${orderId}:`, error);
+    console.error('Error details:', error.response?.data || error.message);
+    // Re-throw with more context
+    throw error.response?.data?.message || error.message || 'Failed to reject order';
   }
 };
 

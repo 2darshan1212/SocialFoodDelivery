@@ -585,7 +585,7 @@ const DeliveryMap = ({
         console.error("Error during map cleanup:", error);
       }
     };
-  }}, []); // Empty dependency array, only run once on mount
+  }, []); // Empty dependency array, only run once on mount
 
   // Create or update markers on the map
   const createOrUpdateMarkers = useCallback(() => {

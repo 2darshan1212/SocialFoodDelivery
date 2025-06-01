@@ -505,7 +505,7 @@ export const getAllAgents = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error fetching all agents:", error);
-    return next(createError(500, "Error fetching agents: " + error.message));
+    return next(createError(500, "Error fetching all agents: " + error.message));
   }
 };
 
@@ -525,28 +525,92 @@ export const getConfirmedOrders = async (req, res, next) => {
     })
     .populate({
       path: 'user',
-      select: 'username email avatar'
+      select: 'username email avatar location' // Added location to get user coordinates
     })
     .populate({
       path: 'restaurant',
       select: 'name location'
+    })
+    .populate({
+      path: 'items.post',
+      select: 'author location' // Get post author location as another coordinate source
     });
 
     // Get agent's current location
     const agentLocation = agent.currentLocation;
     const [agentLongitude, agentLatitude] = agentLocation?.coordinates || [0, 0];
 
-    // Calculate distance for each order if agent has location
+    // Process and enhance each order with proper location data
     const ordersWithDetails = confirmedOrders.map(order => {
       const orderObj = order.toObject();
       
-      // Calculate distance if agent and restaurant coordinates exist
-      if (agentLocation && order.restaurant?.location?.coordinates) {
-        const [restaurantLong, restaurantLat] = order.restaurant.location.coordinates;
+      // Log original order coordinates for debugging
+      console.log(`Backend - Original order ${order._id} coordinates:`, {
+        pickup: order.pickupLocation?.coordinates,
+        delivery: order.deliveryLocation?.coordinates,
+        restaurant: order.restaurant?.location?.coordinates,
+        user: order.user?.location?.coordinates
+      });
+      
+      // Ensure pickup location has valid coordinates
+      if (!orderObj.pickupLocation?.coordinates || 
+          (orderObj.pickupLocation.coordinates[0] === 0 && orderObj.pickupLocation.coordinates[1] === 0)) {
         
-        // Add distance calculation here if needed
-        // For now just return the basic order
+        // Use restaurant location for pickup if available
+        if (orderObj.restaurant?.location?.coordinates && 
+            Array.isArray(orderObj.restaurant.location.coordinates) && 
+            orderObj.restaurant.location.coordinates.length === 2 &&
+            (orderObj.restaurant.location.coordinates[0] !== 0 || orderObj.restaurant.location.coordinates[1] !== 0)) {
+          
+          orderObj.pickupLocation = {
+            type: "Point",
+            coordinates: [...orderObj.restaurant.location.coordinates]
+          };
+          console.log(`Backend - Fixed pickup location for order ${orderObj._id} using restaurant coordinates`);
+        }
+        // Fallback to post author location if restaurant location not available
+        else if (orderObj.items && orderObj.items.length > 0 && 
+                 orderObj.items[0]?.post?.author?.location?.coordinates) {
+          
+          orderObj.pickupLocation = {
+            type: "Point",
+            coordinates: [...orderObj.items[0].post.author.location.coordinates]
+          };
+          console.log(`Backend - Fixed pickup location for order ${orderObj._id} using post author coordinates`);
+        }
       }
+      
+      // Ensure delivery location has valid coordinates
+      if (!orderObj.deliveryLocation?.coordinates || 
+          (orderObj.deliveryLocation.coordinates[0] === 0 && orderObj.deliveryLocation.coordinates[1] === 0)) {
+        
+        // Use user location for delivery if available
+        if (orderObj.user?.location?.coordinates && 
+            Array.isArray(orderObj.user.location.coordinates) && 
+            orderObj.user.location.coordinates.length === 2 &&
+            (orderObj.user.location.coordinates[0] !== 0 || orderObj.user.location.coordinates[1] !== 0)) {
+          
+          orderObj.deliveryLocation = {
+            type: "Point",
+            coordinates: [...orderObj.user.location.coordinates]
+          };
+          console.log(`Backend - Fixed delivery location for order ${orderObj._id} using user coordinates`);
+        }
+      }
+      
+      // Calculate distance if agent has location and order pickup location exists
+      if (agentLocation?.coordinates && orderObj.pickupLocation?.coordinates) {
+        const [pickupLong, pickupLat] = orderObj.pickupLocation.coordinates;
+        
+        // Calculate distance using Haversine formula (implement or use existing function)
+        // For now we'll leave this to the frontend
+      }
+      
+      // Log enhanced order coordinates
+      console.log(`Backend - Enhanced order ${orderObj._id} coordinates:`, {
+        pickup: orderObj.pickupLocation?.coordinates,
+        delivery: orderObj.deliveryLocation?.coordinates
+      });
       
       return orderObj;
     });
@@ -566,7 +630,7 @@ export const getConfirmedOrders = async (req, res, next) => {
 // Reject an order (don't want to deliver it)
 export const rejectOrder = async (req, res, next) => {
   try {
-    const { orderId } = req.params;
+    // ... (rest of the code remains the same)
     
     // Get delivery agent
     const agent = await DeliveryAgent.findOne({ user: req.user.id });
@@ -613,4 +677,4 @@ export const rejectOrder = async (req, res, next) => {
     console.error("Error rejecting order:", error);
     return next(createError(500, "Error rejecting order: " + error.message));
   }
-}; 
+};

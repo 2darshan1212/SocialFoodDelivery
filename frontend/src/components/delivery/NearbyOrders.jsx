@@ -354,19 +354,38 @@ const NearbyOrders = () => {
   }, [dispatch, navigate]);
   
   const handleRejectOrder = useCallback((orderId) => {
+    // Make sure we have a valid orderId
+    if (!orderId) {
+      toast.error("Invalid order ID");
+      return;
+    }
+    
+    // Prevent multiple rejections at once
+    if (rejectingOrderId) {
+      console.log("Already rejecting an order, please wait");
+      return;
+    }
+    
+    console.log(`Attempting to reject order: ${orderId}`);
     setRejectingOrderId(orderId);
     
     dispatch(rejectDeliveryOrder(orderId))
       .unwrap()
-      .then(() => {
+      .then((result) => {
+        console.log("Order rejection successful:", result);
         toast.success("Order rejected successfully");
-        setRejectingOrderId(null);
+        
+        // Immediately trigger a refresh of nearby orders
+        dispatch(fetchNearbyOrders());
       })
       .catch((error) => {
+        console.error("Order rejection failed:", error);
         toast.error(error || "Failed to reject order");
+      })
+      .finally(() => {
         setRejectingOrderId(null);
       });
-  }, [dispatch]);
+  }, [dispatch, rejectingOrderId]);
   
   const toggleAutoRefresh = useCallback(() => {
     if (autoRefreshEnabled) {

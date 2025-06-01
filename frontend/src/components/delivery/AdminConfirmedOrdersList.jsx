@@ -85,17 +85,35 @@ const AdminConfirmedOrdersList = () => {
     return `${distance.toFixed(1)} km`;
   };
   
-  // Log order counts for debugging
+  // Check if coordinates are valid
+  const hasValidCoordinates = (coords) => {
+    return coords && 
+           Array.isArray(coords) && 
+           coords.length === 2 && 
+           (coords[0] !== 0 || coords[1] !== 0) &&
+           !isNaN(coords[0]) && 
+           !isNaN(coords[1]);
+  };
+  
+  // Log order counts and coordinate details for debugging
   useEffect(() => {
     console.log(`AdminConfirmedOrdersList: Found ${adminOrders.length} total orders, ${confirmedOrders.length} available for delivery`);
     
     if (confirmedOrders.length > 0) {
-      const firstOrder = confirmedOrders[0];
-      console.log('Sample order details:', {
-        id: firstOrder._id,
-        status: firstOrder.status,
-        hasDeliveryAgent: !!firstOrder.deliveryAgent,
-        paymentMethod: firstOrder.paymentMethod
+      // Log coordinate details for each confirmed order
+      confirmedOrders.forEach(order => {
+        console.log(`Order ${order._id} coordinate validation:`, {
+          id: order._id,
+          status: order.status,
+          hasDeliveryAgent: !!order.deliveryAgent,
+          paymentMethod: order.paymentMethod,
+          pickupCoordinates: order.pickupLocation?.coordinates,
+          deliveryCoordinates: order.deliveryLocation?.coordinates,
+          pickupValid: hasValidCoordinates(order.pickupLocation?.coordinates),
+          deliveryValid: hasValidCoordinates(order.deliveryLocation?.coordinates),
+          restaurantCoordinates: order.restaurant?.location?.coordinates,
+          userCoordinates: order.user?.location?.coordinates
+        });
       });
     }
   }, [adminOrders, confirmedOrders]);
@@ -212,14 +230,28 @@ const AdminConfirmedOrdersList = () => {
       const deliveryResult = await dispatch(acceptDeliveryOrder(orderId)).unwrap();
       console.log('Delivery order acceptance result:', deliveryResult);
       
-      // 4. As a failsafe, also directly add the order to active deliveries collection
-      dispatch(addToActiveDeliveries({
+      // 4. Prepare order with properly normalized coordinates for active deliveries
+      const orderForActiveDelivery = {
         ...acceptedOrder,
         deliveryAgent: { _id: userId },
         status: 'in-transit', // Update status to ensure it's processed
         deliveryStatus: 'accepted',
         acceptedAt: new Date().toISOString()
-      }));
+      };
+      
+      // Log coordinate information before adding to active deliveries
+      console.log('Adding order to active deliveries with coordinates:', {
+        id: orderForActiveDelivery._id,
+        pickupCoordinates: orderForActiveDelivery.pickupLocation?.coordinates,
+        deliveryCoordinates: orderForActiveDelivery.deliveryLocation?.coordinates,
+        restaurantCoordinates: orderForActiveDelivery.restaurant?.location?.coordinates,
+        userCoordinates: orderForActiveDelivery.user?.location?.coordinates,
+        pickupValid: hasValidCoordinates(orderForActiveDelivery.pickupLocation?.coordinates),
+        deliveryValid: hasValidCoordinates(orderForActiveDelivery.deliveryLocation?.coordinates)
+      });
+      
+      // Add to active deliveries (the slice will normalize coordinates using our utility function)
+      dispatch(addToActiveDeliveries(orderForActiveDelivery));
       
       // 5. Update the toast with success message
       toast.success(`Order accepted! You are now the delivery agent.`, { id: 'acceptOrder' });
