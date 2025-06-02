@@ -70,7 +70,7 @@ const MobileSidebar = ({ isOpen, onClose }) => {
   // Filter options based on user role
   const filteredOptions = sidebarOptions.filter(option => {
     if (!option.role) return true;
-    if (option.role === "admin" && user?.role === "admin") return true;
+    if (option.role === "admin" && user?.isAdmin) return true;
     if (option.role === "delivery" && (user?.role === "delivery" || user?.role === "admin")) return true;
     return false;
   });

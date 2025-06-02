@@ -19,7 +19,8 @@ import {
   TableRow, 
   Paper,
   Alert,
-  Badge
+  Badge,
+  Container
 } from '@mui/material';
 import { formatDistanceToNow } from 'date-fns';
 import { cancelOrder, reorderPreviousOrder } from '../../services/orderService';
@@ -27,14 +28,29 @@ import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import NoOrders from './NoOrders';
 import { testApiConnection } from '../../utils/apiTester';
+import { 
+  Home, 
+  Bell, 
+  PlusSquare, 
+  MessageCircle,
+  Menu as MenuIcon
+} from 'lucide-react';
+import Header from "../header/Header";
+import Leftsidebar from "../left/Leftsidebar";
+import MobileNavItem from "../left/MobileNavItem";
+import MobileSidebar from "../left/MobileSidebar";
 
 const OrderHistory = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  
   const { orders = [], orderStatus } = useSelector(state => state.cart);
   const [loadError, setLoadError] = useState(null);
   const [isConnected, setIsConnected] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Mobile sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // Subscribe to socket order updates via Redux
   const socketOrderUpdates = useSelector(state => state.socket.orderStatusUpdates || []);
@@ -45,6 +61,11 @@ const OrderHistory = () => {
   
   // Keep a local copy of orders that can be updated instantly on status changes
   const [localOrders, setLocalOrders] = useState([]);
+  
+  // Toggle mobile sidebar
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
   
   // Update local orders when Redux orders change
   useEffect(() => {
@@ -219,235 +240,319 @@ const OrderHistory = () => {
   // Render loading state
   if (orderStatus === 'loading' && !localOrders.length) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <CircularProgress />
-      </Box>
+      <div>
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <div className="flex flex-1 flex-col md:flex-row gap-4 p-4 pb-24 md:pb-4">
+            <aside className="hidden md:flex md:flex-col md:w-20 lg:w-64">
+              <Leftsidebar />
+            </aside>
+            <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+                <CircularProgress />
+              </Box>
+            </Box>
+          </div>
+        </div>
+      </div>
     );
   }
   
   // Render connection error state
   if (!isConnected) {
     return (
-      <Box sx={{ py: 3 }}>
-        <Alert severity="error" sx={{ mb: 3 }}>
-          <Typography variant="subtitle1" gutterBottom>Backend Service Unavailable</Typography>
-          <Typography variant="body2">
-            We are unable to connect to the order service. Please try again later.
-          </Typography>
-        </Alert>
-        <Button variant="contained" onClick={checkConnection}>
-          Check Connection
-        </Button>
-      </Box>
+      <div>
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <div className="flex flex-1 flex-col md:flex-row gap-4 p-4 pb-24 md:pb-4">
+            <aside className="hidden md:flex md:flex-col md:w-20 lg:w-64">
+              <Leftsidebar />
+            </aside>
+            <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+              <Alert severity="error" sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" gutterBottom>Backend Service Unavailable</Typography>
+                <Typography variant="body2">
+                  We are unable to connect to the order service. Please try again later.
+                </Typography>
+              </Alert>
+              <Button variant="contained" onClick={checkConnection}>
+                Check Connection
+              </Button>
+            </Box>
+          </div>
+        </div>
+      </div>
     );
   }
   
   // Render error state
   if (loadError && !localOrders.length) {
     return (
-      <Box sx={{ py: 3 }}>
-        <Alert severity="error" sx={{ mb: 3 }}>{loadError}</Alert>
-        <Button variant="contained" onClick={loadOrders}>
-          Try Again
-        </Button>
-      </Box>
+      <div>
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <div className="flex flex-1 flex-col md:flex-row gap-4 p-4 pb-24 md:pb-4">
+            <aside className="hidden md:flex md:flex-col md:w-20 lg:w-64">
+              <Leftsidebar />
+            </aside>
+            <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+              <Alert severity="error" sx={{ mb: 3 }}>{loadError}</Alert>
+              <Button variant="contained" onClick={loadOrders}>
+                Try Again
+              </Button>
+            </Box>
+          </div>
+        </div>
+      </div>
     );
   }
   
   // Render no orders
   if (!localOrders || localOrders.length === 0) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <NoOrders />
-      </Box>
+      <div>
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <div className="flex flex-1 flex-col md:flex-row gap-4 p-4 pb-24 md:pb-4">
+            <aside className="hidden md:flex md:flex-col md:w-20 lg:w-64">
+              <Leftsidebar />
+            </aside>
+            <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+                <NoOrders />
+              </Box>
+            </Box>
+          </div>
+
+          {/* Mobile Sidebar Drawer */}
+          <MobileSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+          
+          {/* Mobile Bottom Navigation */}
+          <div className="fixed bottom-0 left-0 right-0 block md:hidden bg-white border-t shadow-lg z-50">
+            <div className="flex justify-around items-center h-16">
+              <MobileNavItem icon={<Home size={24} />} label="Home" path="/" />
+              <MobileNavItem icon={<Bell size={24} />} label="Notifications" path="/notifications" />
+              <MobileNavItem icon={<PlusSquare size={24} />} label="Post" path="/create-post" isPostButton={true} />
+              <MobileNavItem icon={<MessageCircle size={24} />} label="Messages" path="/chat/chatpage" />
+              <button 
+                onClick={toggleSidebar} 
+                className="flex flex-col items-center justify-center p-2 text-gray-600 hover:text-primary-600 focus:outline-none"
+              >
+                <MenuIcon size={24} />
+                <span className="text-xs mt-1">Menu</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
   
   console.log('Rendering orders:', localOrders);
   
   return (
-    <Box sx={{ maxWidth: 1200, mx: 'auto', px: 2, py: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <div>
-          <Typography variant="h4" gutterBottom>Order History</Typography>
-          <Typography variant="body1" color="text.secondary">
-            View and manage your orders
-          </Typography>
-        </div>
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          {socketConnected ? (
-            <Badge color="success" variant="dot" sx={{ mr: 2 }}>
-              <Typography variant="caption">Live updates active</Typography>
-            </Badge>
-          ) : (
-            <Badge color="error" variant="dot" sx={{ mr: 2 }}>
-              <Typography variant="caption">Live updates disconnected</Typography>
-            </Badge>
-          )}
-          <Button 
-            onClick={loadOrders} 
-            variant="outlined" 
-            disabled={refreshing}
-          >
-            {refreshing ? <CircularProgress size={24} /> : 'Refresh'}
-          </Button>
-        </Box>
-      </Box>
-      
-      {loadError && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          {loadError} <Button size="small" onClick={loadOrders}>Retry</Button>
-        </Alert>
-      )}
-      
-      <Grid container spacing={3}>
-        {localOrders.map((order) => (
-          <Grid item xs={12} key={order._id}>
-            <Card 
-              sx={{ 
-                mb: 2, 
-                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                transition: 'transform 0.2s',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                }
-              }}
-            >
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                  <Box>
-                    <Typography variant="h6">Order #{order._id.substring(order._id.length - 6)}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {formatDate(order.createdAt)}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Last updated: {formatDate(order.updatedAt || order.createdAt)}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Chip 
-                      label={order.status.replace(/_/g, ' ').toUpperCase()} 
-                      color={getStatusColor(order.status)} 
-                      variant="filled" 
-                      sx={{ fontWeight: 'bold' }}
-                    />
-                  </Box>
-                </Box>
-                
-                <Divider sx={{ my: 2 }} />
-                
-                <TableContainer component={Paper} elevation={0} variant="outlined">
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Item</TableCell>
-                        <TableCell align="right">Quantity</TableCell>
-                        <TableCell align="right">Price</TableCell>
-                        <TableCell align="right">Total</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {order.items.map((item, index) => (
-                        <TableRow key={index}>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              {item.image && (
-                                <Box
-                                  component="img"
-                                  src={item.image}
-                                  alt={item.name}
-                                  sx={{ width: 40, height: 40, borderRadius: 1, mr: 1, objectFit: 'cover' }}
-                                />
-                              )}
-                              <Typography variant="body2">{item.name}</Typography>
-                            </Box>
-                          </TableCell>
-                          <TableCell align="right">{item.quantity}</TableCell>
-                          <TableCell align="right">₹{item.price.toFixed(2)}</TableCell>
-                          <TableCell align="right">₹{(item.price * item.quantity).toFixed(2)}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3, flexWrap: 'wrap' }}>
-                  <Box sx={{ mb: 2, minWidth: '40%' }}>
-                    <Typography variant="subtitle2">Delivery Details</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {order.deliveryAddress}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Contact: {order.contactNumber}
-                    </Typography>
-                    {order.deliveryInstructions && (
-                      <Typography variant="body2" color="text.secondary">
-                        Instructions: {order.deliveryInstructions}
-                      </Typography>
-                    )}
-                  </Box>
-                  
-                  <Box sx={{ mb: 2, minWidth: '30%' }}>
-                    <Typography variant="subtitle2">Order Summary</Typography>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                      <Typography variant="body2" color="text.secondary">Subtotal:</Typography>
-                      <Typography variant="body2">₹{order.subtotal.toFixed(2)}</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Tax:</Typography>
-                      <Typography variant="body2">₹{order.tax.toFixed(2)}</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Delivery Fee:</Typography>
-                      <Typography variant="body2">₹{order.deliveryFee.toFixed(2)}</Typography>
-                    </Box>
-                    {order.discount > 0 && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="body2" color="text.secondary">Discount:</Typography>
-                        <Typography variant="body2" color="error">-₹{order.discount.toFixed(2)}</Typography>
+    <div>
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        {/* Main Layout */}
+        <div className="flex flex-1 flex-col md:flex-row gap-4 p-4 pb-24 md:pb-4">
+          {/* Left Sidebar sticky on md+ */}
+          <aside className="hidden md:flex md:flex-col md:w-20 lg:w-64">
+            <Leftsidebar />
+          </aside>
+
+          {/* Center Content */}
+          <Container maxWidth="xl" sx={{ px: { xs: 2, sm: 3 }, py: { xs: 2, sm: 3 } }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+              <div>
+                <Typography variant="h4" gutterBottom>Order History</Typography>
+                <Typography variant="body1" color="text.secondary">
+                  View and manage your orders
+                </Typography>
+              </div>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                {socketConnected ? (
+                  <Badge color="success" variant="dot" sx={{ mr: 2 }}>
+                    <Typography variant="caption">Live updates active</Typography>
+                  </Badge>
+                ) : (
+                  <Badge color="error" variant="dot" sx={{ mr: 2 }}>
+                    <Typography variant="caption">Live updates disconnected</Typography>
+                  </Badge>
+                )}
+                <Button 
+                  onClick={loadOrders} 
+                  variant="outlined" 
+                  disabled={refreshing}
+                >
+                  {refreshing ? <CircularProgress size={24} /> : 'Refresh'}
+                </Button>
+              </Box>
+            </Box>
+            
+            {loadError && (
+              <Alert severity="warning" sx={{ mb: 3 }}>
+                {loadError} <Button size="small" onClick={loadOrders}>Retry</Button>
+              </Alert>
+            )}
+            
+            <Grid container spacing={3}>
+              {localOrders.map((order) => (
+                <Grid item xs={12} key={order._id}>
+                  <Card 
+                    sx={{ 
+                      mb: 2, 
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                      transition: 'transform 0.2s',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                      }
+                    }}
+                  >
+                    <CardContent>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                        <Box>
+                          <Typography variant="h6">Order #{order._id.substring(order._id.length - 6)}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatDate(order.createdAt)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Last updated: {formatDate(order.updatedAt || order.createdAt)}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Chip 
+                            label={order.status.replace(/_/g, ' ').toUpperCase()} 
+                            color={getStatusColor(order.status)} 
+                            variant="filled" 
+                            sx={{ fontWeight: 'bold' }}
+                          />
+                        </Box>
                       </Box>
-                    )}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                      <Typography variant="subtitle2">Total:</Typography>
-                      <Typography variant="subtitle2" color="primary">
-                        ₹{(order.total || order.totalAmount).toFixed(2)}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Box>
-                
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 2 }}>
-                  {order.status !== 'cancelled' && order.status !== 'delivered' && (
-                    <Button 
-                      variant="outlined" 
-                      color="error"
-                      onClick={() => handleCancelOrder(order._id)}
-                    >
-                      Cancel Order
-                    </Button>
-                  )}
-                  <Button 
-                    variant="contained" 
-                    color="primary"
-                    onClick={() => handleReorder(order._id)}
-                  >
-                    Reorder
-                  </Button>
-                  <Button 
-                    variant="outlined" 
-                    color="primary"
-                    onClick={() => navigate(`/orders/${order._id}`)}
-                  >
-                    View Details
-                  </Button>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-    </Box>
+                      
+                      <Divider sx={{ my: 2 }} />
+                      
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" gutterBottom>Order Items:</Typography>
+                        <TableContainer component={Paper} variant="outlined">
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>Item</TableCell>
+                                <TableCell align="right">Quantity</TableCell>
+                                <TableCell align="right">Price</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {order.items?.map((item, index) => (
+                                <TableRow key={index}>
+                                  <TableCell>
+                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                      {item.image && (
+                                        <Box 
+                                          component="img" 
+                                          src={item.image} 
+                                          alt={item.name}
+                                          sx={{ 
+                                            width: 40, 
+                                            height: 40, 
+                                            borderRadius: 1, 
+                                            mr: 1,
+                                            objectFit: 'cover'
+                                          }}
+                                        />
+                                      )}
+                                      <Typography variant="body2">{item.name}</Typography>
+                                    </Box>
+                                  </TableCell>
+                                  <TableCell align="right">{item.quantity}</TableCell>
+                                  <TableCell align="right">₹{item.price}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Box>
+                      
+                      <Grid container spacing={2} sx={{ mb: 2 }}>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="subtitle2" gutterBottom>Delivery Address:</Typography>
+                          <Typography variant="body2">{order.deliveryAddress || 'No address provided'}</Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="subtitle2" gutterBottom>Contact Number:</Typography>
+                          <Typography variant="body2">{order.contactNumber || 'No contact provided'}</Typography>
+                        </Grid>
+                      </Grid>
+                      
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                        <Box>
+                          <Typography variant="h6" color="primary">
+                            Total: ₹{order.total}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Payment: {order.paymentMethod}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button 
+                            size="small" 
+                            variant="outlined"
+                            onClick={() => navigate(`/orders/${order._id}`)}
+                          >
+                            View Details
+                          </Button>
+                          {order.status === 'processing' && (
+                            <Button 
+                              size="small" 
+                              variant="outlined" 
+                              color="error"
+                              onClick={() => handleCancelOrder(order._id)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                          {['delivered', 'cancelled'].includes(order.status) && (
+                            <Button 
+                              size="small" 
+                              variant="contained"
+                              onClick={() => handleReorder(order._id)}
+                            >
+                              Reorder
+                            </Button>
+                          )}
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Container>
+        </div>
+
+        {/* Mobile Sidebar Drawer */}
+        <MobileSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        
+        {/* Mobile Bottom Navigation */}
+        <div className="fixed bottom-0 left-0 right-0 block md:hidden bg-white border-t shadow-lg z-50">
+          <div className="flex justify-around items-center h-16">
+            <MobileNavItem icon={<Home size={24} />} label="Home" path="/" />
+            <MobileNavItem icon={<Bell size={24} />} label="Notifications" path="/notifications" />
+            <MobileNavItem icon={<PlusSquare size={24} />} label="Post" path="/create-post" isPostButton={true} />
+            <MobileNavItem icon={<MessageCircle size={24} />} label="Messages" path="/chat/chatpage" />
+            <button 
+              onClick={toggleSidebar} 
+              className="flex flex-col items-center justify-center p-2 text-gray-600 hover:text-primary-600 focus:outline-none"
+            >
+              <MenuIcon size={24} />
+              <span className="text-xs mt-1">Menu</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 

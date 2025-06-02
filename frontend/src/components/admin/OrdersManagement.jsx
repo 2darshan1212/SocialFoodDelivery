@@ -34,10 +34,15 @@ import {
   Grid,
   Card,
   CardContent,
+  CardActions,
   Collapse,
   Container,
   InputAdornment,
-  Stack
+  Stack,
+  useMediaQuery,
+  useTheme,
+  Fab,
+  Hidden
 } from '@mui/material';
 import {
   Edit,
@@ -48,7 +53,16 @@ import {
   Close,
   Timeline,
   Person,
-  DirectionsBike
+  DirectionsBike,
+  ExpandMore,
+  ExpandLess,
+  ShoppingCart,
+  Phone,
+  LocationOn,
+  Schedule,
+  Payment,
+  Done,
+  Cancel
 } from '@mui/icons-material';
 
 // Utility function to normalize order data
@@ -160,6 +174,10 @@ const formatDate = (dateString) => {
 
 const OrdersManagement = () => {
   const dispatch = useDispatch();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isTablet = useMediaQuery(theme.breakpoints.down('lg'));
+  
   const { data: orders, pagination, status, error } = useSelector((state) => state.admin.orders);
   const updateStatus = useSelector((state) => state.admin.updateStatus);
   const statusHistory = useSelector((state) => state.admin.deliveryStatusHistory);
@@ -174,7 +192,7 @@ const OrdersManagement = () => {
   
   // State for pagination
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(isMobile ? 5 : 10);
   
   // State for order detail drawer
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -206,6 +224,17 @@ const OrdersManagement = () => {
   
   // State for status history dialog
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  
+  // State for expanded cards in mobile view
+  const [expandedCards, setExpandedCards] = useState({});
+  
+  // Toggle card expansion
+  const toggleCardExpansion = (orderId) => {
+    setExpandedCards(prev => ({
+      ...prev,
+      [orderId]: !prev[orderId]
+    }));
+  };
   
   // Fetch orders on component mount and when filters/pagination change
   useEffect(() => {
@@ -637,6 +666,171 @@ const OrdersManagement = () => {
     );
   };
   
+  // Mobile-friendly Order Card Component
+  const OrderCard = ({ order }) => {
+    const isExpanded = expandedCards[order._id];
+    
+    return (
+      <Card 
+        sx={{ 
+          mb: 2, 
+          boxShadow: 2,
+          '&:hover': { boxShadow: 4 },
+          transition: 'box-shadow 0.2s'
+        }}
+      >
+        <CardContent sx={{ pb: 1 }}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+            <Box>
+              <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
+                Order #{order._id.slice(-6)}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {formatDate(order.createdAt)}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+              {renderStatusChip(order.status)}
+              <Typography variant="h6" color="primary" sx={{ fontSize: '1rem' }}>
+                {formatCurrency(order.totalAmount)}
+              </Typography>
+            </Box>
+          </Box>
+          
+          {/* Customer Info */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <Person sx={{ fontSize: '1rem', color: 'text.secondary' }} />
+            <Typography variant="body2">
+              {order.user.name}
+            </Typography>
+          </Box>
+          
+          {/* Quick Info */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <ShoppingCart sx={{ fontSize: '1rem', color: 'text.secondary' }} />
+              <Typography variant="body2">
+                {order.items.length} items
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Payment sx={{ fontSize: '1rem', color: 'text.secondary' }} />
+              {renderPaymentStatusChip(order.paymentStatus)}
+            </Box>
+          </Box>
+          
+          {/* Expandable Details */}
+          <Collapse in={isExpanded}>
+            <Divider sx={{ my: 1 }} />
+            
+            {/* Items */}
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+              Order Items:
+            </Typography>
+            {order.items.map((item, index) => (
+              <Box key={index} sx={{ mb: 1, pl: 1 }}>
+                <Typography variant="body2">
+                  {item.quantity}x {item.name} - {formatCurrency(item.price * item.quantity)}
+                </Typography>
+              </Box>
+            ))}
+            
+            {/* Address */}
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mt: 2, mb: 1 }}>
+              <LocationOn sx={{ fontSize: '1rem', color: 'text.secondary', mt: 0.2 }} />
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                  Delivery Address:
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {order.deliveryAddress}
+                </Typography>
+              </Box>
+            </Box>
+            
+            {/* Contact */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Phone sx={{ fontSize: '1rem', color: 'text.secondary' }} />
+              <Typography variant="body2">
+                {order.contactNumber}
+              </Typography>
+            </Box>
+            
+            {/* Payment Details */}
+            <Box sx={{ mt: 2, p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                Payment Details:
+              </Typography>
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <Typography variant="body2">Subtotal:</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" align="right">
+                    {formatCurrency(order.subtotal)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2">Delivery:</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" align="right">
+                    {formatCurrency(order.deliveryFee)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2">Tax:</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" align="right">
+                    {formatCurrency(order.tax)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>Total:</Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="body2" align="right" sx={{ fontWeight: 'bold' }}>
+                    {formatCurrency(order.totalAmount)}
+                  </Typography>
+                </Grid>
+              </Grid>
+            </Box>
+          </Collapse>
+        </CardContent>
+        
+        <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<Edit />}
+              onClick={() => handleOpenStatusDialog(order)}
+            >
+              Update
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<Visibility />}
+              onClick={() => handleViewDetails(order)}
+            >
+              Details
+            </Button>
+          </Box>
+          
+          <IconButton
+            onClick={() => toggleCardExpansion(order._id)}
+            size="small"
+          >
+            {isExpanded ? <ExpandLess /> : <ExpandMore />}
+          </IconButton>
+        </CardActions>
+      </Card>
+    );
+  };
+  
   return (
     <Container maxWidth="xl" sx={{ mt: 3, mb: 5 }}>
       <Paper sx={{ p: 3, mb: 3 }}>
@@ -658,167 +852,212 @@ const OrdersManagement = () => {
                     <Search />
                   </InputAdornment>
                 ),
-                endAdornment: searchTerm ? (
-                  <InputAdornment position="end">
-                    <IconButton
-                      size="small"
-                      aria-label="clear search"
-                      onClick={() => {
-                        setSearchTerm('');
-                        setPage(0);
-                      }}
-                    >
-                      <Close fontSize="small" />
-                    </IconButton>
-                  </InputAdornment>
-                ) : null
               }}
-              size="small"
+              size={isMobile ? "small" : "medium"}
             />
           </Grid>
-          <Grid item xs={6} md={2}>
-            <Button 
-              variant="outlined" 
-              fullWidth
-              startIcon={<FilterList />}
-              onClick={() => setFilterDrawerOpen(true)}
-            >
-              Filters
-            </Button>
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <Button 
-              variant="outlined" 
-              fullWidth
-              startIcon={<Refresh />}
-              onClick={handleRefresh}
-            >
-              Refresh
-            </Button>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={filters.status}
-                label="Status"
-                onChange={(e) => handleFilterChange('status', e.target.value)}
+          
+          <Grid item xs={12} md={6}>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <FormControl size={isMobile ? "small" : "medium"} sx={{ minWidth: 120, flex: 1 }}>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={filters.status}
+                  label="Status"
+                  onChange={(e) => handleFilterChange('status', e.target.value)}
+                >
+                  <MenuItem value="all">All</MenuItem>
+                  <MenuItem value="processing">Processing</MenuItem>
+                  <MenuItem value="confirmed">Confirmed</MenuItem>
+                  <MenuItem value="preparing">Preparing</MenuItem>
+                  <MenuItem value="out_for_delivery">Out for Delivery</MenuItem>
+                  <MenuItem value="delivered">Delivered</MenuItem>
+                  <MenuItem value="cancelled">Cancelled</MenuItem>
+                </Select>
+              </FormControl>
+              
+              <Button
+                variant="outlined"
+                onClick={handleRefresh}
+                sx={{ minWidth: 'auto', px: isMobile ? 1 : 2 }}
+                size={isMobile ? "small" : "medium"}
               >
-                <MenuItem value="all">All Statuses</MenuItem>
-                <MenuItem value="processing">Processing</MenuItem>
-                <MenuItem value="confirmed">Confirmed</MenuItem>
-                <MenuItem value="preparing">Preparing</MenuItem>
-                <MenuItem value="out_for_delivery">Out for Delivery</MenuItem>
-                <MenuItem value="delivered">Delivered</MenuItem>
-                <MenuItem value="cancelled">Cancelled</MenuItem>
-              </Select>
-            </FormControl>
+                <Refresh />
+              </Button>
+              
+              <Button
+                variant="outlined"
+                onClick={() => setFilterDrawerOpen(true)}
+                sx={{ minWidth: 'auto', px: isMobile ? 1 : 2, display: { md: 'none' } }}
+                size="small"
+              >
+                <FilterList />
+              </Button>
+            </Box>
           </Grid>
         </Grid>
-        
-        {/* Orders table */}
-        {status && status === 'loading' ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : status && status === 'failed' ? (
-          <Alert severity="error" sx={{ my: 2 }}>
-            {error}
-          </Alert>
-        ) : (
-          <>
-            <TableContainer>
-              <Table sx={{ minWidth: 700 }}>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Order ID</TableCell>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Customer</TableCell>
-                    <TableCell>Items</TableCell>
-                    <TableCell>Total</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Payment</TableCell>
-                    <TableCell align="center">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {orders && orders.length > 0 ? (
-                    orders.map((order) => {
-                      const normalizedOrder = mapOrderData(order);
+      </Paper>
+
+      {/* Loading state */}
+      {status === 'loading' && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {/* Error state */}
+      {status === 'failed' && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      {/* Orders content */}
+      {status === 'succeeded' && (
+        <>
+          {/* Mobile view - Cards */}
+          {isMobile ? (
+            <Box>
+              {orders.length === 0 ? (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography variant="h6" color="text.secondary">
+                    No orders found
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Try adjusting your search filters
+                  </Typography>
+                </Paper>
+              ) : (
+                orders.map((order) => {
+                  const mappedOrder = mapOrderData(order);
+                  return <OrderCard key={mappedOrder._id} order={mappedOrder} />;
+                })
+              )}
+            </Box>
+          ) : (
+            /* Desktop view - Table */
+            <Paper>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Order ID</TableCell>
+                      <TableCell>Customer</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Items</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Payment</TableCell>
+                      <TableCell>Total</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {orders.map((order) => {
+                      const mappedOrder = mapOrderData(order);
                       return (
-                        <TableRow key={normalizedOrder._id}>
-                          <TableCell>{normalizedOrder._id.substring(0, 8)}...</TableCell>
-                          <TableCell>{formatDate(normalizedOrder.createdAt)}</TableCell>
-                          <TableCell>{normalizedOrder.user?.name || 'Unknown'}</TableCell>
-                          <TableCell>{normalizedOrder.items?.length || 0} items</TableCell>
-                          <TableCell>{formatCurrency(normalizedOrder.totalAmount)}</TableCell>
-                          <TableCell>{renderStatusChip(normalizedOrder.status)}</TableCell>
-                          <TableCell>{renderPaymentStatusChip(normalizedOrder.paymentStatus)}</TableCell>
+                        <TableRow key={mappedOrder._id} hover>
                           <TableCell>
-                            <Stack direction="row" spacing={1} justifyContent="center">
-                              <Tooltip title="View Details">
-                                <IconButton 
-                                  size="small" 
-                                  onClick={() => handleViewDetails(order)}
-                                >
-                                  <Visibility fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                              #{mappedOrder._id.slice(-6)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {mappedOrder.user.name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {mappedOrder.user.email}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {formatDate(mappedOrder.createdAt)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {mappedOrder.items.length} items
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            {renderStatusChip(mappedOrder.status)}
+                          </TableCell>
+                          <TableCell>
+                            {renderPaymentStatusChip(mappedOrder.paymentStatus)}
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                              {formatCurrency(mappedOrder.totalAmount)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
                               <Tooltip title="Update Status">
-                                <IconButton 
-                                  size="small" 
-                                  onClick={() => handleOpenStatusDialog(order)}
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleOpenStatusDialog(mappedOrder)}
                                 >
-                                  <Edit fontSize="small" />
+                                  <Edit />
                                 </IconButton>
                               </Tooltip>
-                              <Tooltip title="Status History">
-                                <IconButton 
-                                  size="small" 
-                                  onClick={() => handleOpenHistoryDialog(normalizedOrder._id)}
+                              <Tooltip title="View Details">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => handleViewDetails(mappedOrder)}
                                 >
-                                  <Timeline fontSize="small" />
+                                  <Visibility />
                                 </IconButton>
                               </Tooltip>
-                              <Tooltip title="Assign Delivery Agent">
-                                <IconButton 
-                                  size="small" 
-                                  onClick={() => handleOpenAgentDialog(order)}
-                                  disabled={normalizedOrder.status === 'delivered' || normalizedOrder.status === 'cancelled'}
-                                >
-                                  <DirectionsBike fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            </Stack>
+                            </Box>
                           </TableCell>
                         </TableRow>
                       );
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={8} align="center">
-                        <Typography variant="body1" sx={{ py: 3 }}>
-                          No orders found
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          )}
+
+          {/* Pagination */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
             <TablePagination
               component="div"
-              count={pagination.totalOrders || 0}
+              count={pagination.total || 0}
               page={page}
               onPageChange={handleChangePage}
               rowsPerPage={rowsPerPage}
               onRowsPerPageChange={handleChangeRowsPerPage}
-              rowsPerPageOptions={[5, 10, 25, 50]}
+              rowsPerPageOptions={isMobile ? [5, 10, 25] : [5, 10, 25, 50]}
+              sx={{
+                '& .MuiTablePagination-toolbar': {
+                  flexWrap: isMobile ? 'wrap' : 'nowrap',
+                },
+                '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+                  fontSize: isMobile ? '0.875rem' : '1rem',
+                },
+              }}
             />
-          </>
-        )}
-      </Paper>
-      
+          </Box>
+        </>
+      )}
+
+      {/* Floating action button for mobile refresh */}
+      {isMobile && (
+        <Fab
+          color="primary"
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            zIndex: 1000,
+          }}
+          onClick={handleRefresh}
+        >
+          <Refresh />
+        </Fab>
+      )}
+
       {/* Order details drawer */}
       <Drawer
         anchor="right"

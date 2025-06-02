@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { useSelector, useDispatch } from "react-redux";
-import { fetchConfirmedOrders } from "../redux/confirmedOrdersSlice";
+import { fetchNearbyOrders } from "../redux/deliverySlice";
+import { fetchConfirmedOrders } from "../redux/deliverySlice";
 import { toast } from "react-toastify";
 
 // Create a context for the socket

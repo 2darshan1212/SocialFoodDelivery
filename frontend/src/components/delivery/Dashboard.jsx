@@ -11,12 +11,9 @@ import {
   rejectDeliveryOrder,
   completeDeliveryOrder,
   fetchAgentProfile,
-} from "../../redux/deliverySlice";
-import {
   fetchConfirmedOrders,
-  acceptConfirmedOrder,
-  updateAgentLocation
-} from "../../redux/confirmedOrdersSlice";
+  setCurrentLocation,
+} from "../../redux/deliverySlice";
 import {
   MdLocationSearching,
   MdDirectionsBike,
@@ -29,6 +26,7 @@ import {
   MdDeliveryDining,
   MdLocalOffer,
   MdLocationOff,
+  MdBugReport
 } from "react-icons/md";
 import { FiPackage, FiClock } from "react-icons/fi";
 import { BsCheck2Circle, BsXCircle } from "react-icons/bs";
@@ -40,6 +38,7 @@ import AdminConfirmedOrdersList from './AdminConfirmedOrdersList';
 import { Box, Typography, Button } from "@mui/material";
 import { Refresh } from "@mui/icons-material";
 import { calculateDistance, hasLocationChangedSignificantly, formatCoordinate } from '../../utils/distanceUtils';
+import CoordinateTest from './CoordinateTest';
 
 // Threshold for location change detection (in km)
 const LOCATION_CHANGE_THRESHOLD = 0.1; // 100 meters
@@ -52,19 +51,21 @@ const Dashboard = () => {
     isDeliveryAgent,
     profile,
     isProfileLoading,
-    isAvailable,
     currentLocation,
-    activeOrders,
-    stats,
     nearbyOrders,
     isNearbyOrdersLoading,
+    activeDeliveries,
+    isAcceptingOrder,
+    stats,
+    isAvailable,
+    confirmedOrders,
+    pickupPoints,
+    distances,
+    estimatedTravelTimes,
+    isLoadingConfirmedOrders,
+    confirmedOrdersError
   } = useSelector((state) => state.delivery);
   
-  // Get confirmed orders data from the new confirmedOrders slice
-  const {
-    orders: confirmedOrders,
-  } = useSelector((state) => state.confirmedOrders);
-
   // Use our location tracking hook
   const {
     position,
@@ -102,20 +103,11 @@ const Dashboard = () => {
     position.timestamp,
   ]);
 
-  // Memoize nearby orders to prevent re-renders when they haven't changed
-  const memoizedNearbyOrders = useMemo(() => {
+  // Calculate filtered nearby orders
+  const filteredNearbyOrders = useMemo(() => {
+    if (!nearbyOrders || nearbyOrders.length === 0) return [];
     return nearbyOrders || [];
   }, [nearbyOrders]);
-  
-  // Get confirmed orders data from the Redux store
-  const { 
-    pickupPoints: confirmedPickupPoints, 
-    deliveryPoints: confirmedDeliveryPoints,
-    distances: confirmedDistances,
-    estimatedTravelTimes,
-    isLoading: isLoadingConfirmedOrders,
-    pickupPoints
-  } = useSelector(state => state.confirmedOrders);
   
   // Memoize orders and pickup points with enhanced sorting
   const memoizedConfirmedOrders = useMemo(() => {
@@ -127,8 +119,8 @@ const Dashboard = () => {
       const matchingPickup = pickupPoints.find(point => point.orderId === order._id);
       let distance = null;
       
-      if (matchingPickup && confirmedDistances[matchingPickup.orderId]) {
-        distance = confirmedDistances[matchingPickup.orderId];
+      if (matchingPickup && distances[matchingPickup.orderId]) {
+        distance = distances[matchingPickup.orderId];
       } else if (order.restaurant?.location?.coordinates && position.latitude && position.longitude) {
         try {
           const restaurantLat = order.restaurant.location.coordinates[1];
@@ -165,20 +157,20 @@ const Dashboard = () => {
       if (b.distance === null) return -1;
       return a.distance - b.distance;
     });
-  }, [confirmedOrders, pickupPoints, confirmedDistances, position.latitude, position.longitude]);
+  }, [confirmedOrders, pickupPoints, distances, position.latitude, position.longitude]);
   
   // Memoize pickup points
   const memoizedPickupPoints = useMemo(() => {
     // Sort by distance (nearest first)
-    return [...(confirmedPickupPoints || [])].sort((a, b) => {
+    return [...(pickupPoints || [])].sort((a, b) => {
       // Sort by distance (nearest first)
-      const distanceA = confirmedDistances[a.orderId] || null;
-      const distanceB = confirmedDistances[b.orderId] || null;
+      const distanceA = distances[a.orderId] || null;
+      const distanceB = distances[b.orderId] || null;
       if (distanceA === null) return 1;
       if (distanceB === null) return -1;
       return distanceA - distanceB;
     });
-  }, [confirmedPickupPoints, confirmedDistances]);
+  }, [pickupPoints, distances]);
 
   // Get socket from context
   const socket = useSocket();
@@ -335,7 +327,7 @@ const Dashboard = () => {
           });
           
         // Update agent location in confirmedOrders slice
-        dispatch(updateAgentLocation({
+        dispatch(setCurrentLocation({
           latitude: position.latitude,
           longitude: position.longitude
         }));
@@ -393,7 +385,7 @@ const Dashboard = () => {
     
     // Single approach for all order types for simplicity
     const acceptPromise = pickupPoints.some(point => point.orderId === orderId)
-      ? dispatch(acceptConfirmedOrder(orderId))
+      ? dispatch(acceptDeliveryOrder(orderId))
       : dispatch(acceptDeliveryOrder(orderId));
     
     acceptPromise
@@ -590,6 +582,8 @@ const Dashboard = () => {
     }
   }, [position.latitude, position.longitude]);
 
+  const [showCoordinateTest, setShowCoordinateTest] = useState(false);
+
   if (isProfileLoading) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-64px)]">
@@ -671,7 +665,7 @@ const Dashboard = () => {
             </div>
             <div>
               <span className="text-2xl font-bold text-gray-800">
-                {activeOrders?.length || 0}
+                {activeDeliveries?.length || 0}
               </span>
               <p className="text-xs text-gray-500 mt-1">
                 Currently assigned deliveries
@@ -720,6 +714,33 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Coordinate Testing Panel (Development Only) */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mb-8">
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="bg-yellow-50 px-4 py-2 border-b border-yellow-100">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-medium text-yellow-800 flex items-center">
+                  <MdBugReport className="mr-2" />
+                  Coordinate Debug Panel (Development)
+                </h3>
+                <button 
+                  className="text-xs bg-white text-yellow-600 border border-yellow-300 px-2 py-1 rounded"
+                  onClick={() => setShowCoordinateTest(!showCoordinateTest)}
+                >
+                  {showCoordinateTest ? 'Hide' : 'Show'} Debug Panel
+                </button>
+              </div>
+            </div>
+            {showCoordinateTest && (
+              <div className="p-4">
+                <CoordinateTest />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Location & Map Section */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
@@ -943,7 +964,7 @@ const Dashboard = () => {
                     longitude={memoizedPosition.longitude}
                     zoom={14}
                     height="240px"
-                    nearbyOrders={memoizedNearbyOrders}
+                    nearbyOrders={filteredNearbyOrders}
                     onOrderClick={handleAcceptOrder}
                     onRejectClick={handleRejectOrder}
                   />
@@ -987,9 +1008,18 @@ const Dashboard = () => {
         <div className="mt-8 p-4 bg-white rounded-lg shadow-sm border border-gray-200">
           <AdminConfirmedOrdersList />
         </div>
+        
+        {/* Development Debug Section - Only shown in development mode */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-8 p-4 bg-yellow-50 rounded-lg shadow-sm border border-yellow-200">
+            <div className="flex items-center mb-3">
+              <MdBugReport className="text-yellow-600 mr-2" />
+              <h3 className="text-lg font-semibold text-yellow-800">Development Debug Panel</h3>
+            </div>
+            <CoordinateTest />
+          </div>
+        )}
       </div>
-
-      {/* "All Available Orders" section removed as requested */}
     </div>
   );
 };

@@ -16,7 +16,7 @@ import {
   getCurrentUserProfile,
 } from "../controllers/user.controller.js";
 import { refreshToken } from "../controllers/refresh-token.controller.js";
-import isAuthenticated from "../middlewares/isAuthenticated.js";
+import { verifyToken } from "../middlewares/verifyToken.js";
 import upload from "../middlewares/multer.js";
 import { verifyAdmin } from "../middlewares/verifyAdmin.js";
 import { User } from "../models/user.model.js";
@@ -26,33 +26,33 @@ router.route("/register").post(register);
 router.route("/login").post(login);
 router.route("/logout").get(logout);
 router.route("/refresh-token").post(refreshToken);
-router.route("/me").get(isAuthenticated, getCurrentUser);
-router.route("/:id/profile").get(isAuthenticated, getProfile);
+router.route("/me").get(verifyToken, getCurrentUser);
+router.route("/:id/profile").get(verifyToken, getProfile);
 router
   .route("/profile/edit")
-  .post(isAuthenticated, upload.single("profilePhoto"), editProfile);
-router.route("/suggested").get(isAuthenticated, getSuggestedUsers);
-router.route("/followorunfollow/:id").post(isAuthenticated, followOrUnfollow);
-router.route("/followings").get(isAuthenticated, getFollowings);
-router.route("/stats/:id").get(isAuthenticated, getUserStats);
-router.post("/location", isAuthenticated, updateUserLocation);
-router.get("/nearby", isAuthenticated, findNearbyUsers);
-router.get("/search", isAuthenticated, searchUsers);
-router.get("/profile", isAuthenticated, getCurrentUserProfile);
+  .post(verifyToken, upload.single("profilePhoto"), editProfile);
+router.route("/suggested").get(verifyToken, getSuggestedUsers);
+router.route("/followorunfollow/:id").post(verifyToken, followOrUnfollow);
+router.route("/followings").get(verifyToken, getFollowings);
+router.route("/stats/:id").get(verifyToken, getUserStats);
+router.post("/location", verifyToken, updateUserLocation);
+router.get("/nearby", verifyToken, findNearbyUsers);
+router.get("/search", verifyToken, searchUsers);
+router.get("/profile", verifyToken, getCurrentUserProfile);
 
 // Route to check if user is admin
-router.route("/check-admin").get(isAuthenticated, (req, res) => {
+router.route("/check-admin").get(verifyToken, (req, res) => {
   try {
     console.log("Admin check requested by:", req.user);
     console.log("User admin status from request:", req.user?.isAdmin);
-    console.log("User ID in request:", req.id);
+    console.log("User ID in request:", req.user?.id);
     
     const { isAdmin = false } = req.user || {};
     
     return res.status(200).json({
       success: true,
       isAdmin,
-      userId: req.id,
+      userId: req.user?.id,
       message: isAdmin ? "User has admin privileges" : "User does not have admin privileges"
     });
   } catch (error) {
@@ -65,7 +65,7 @@ router.route("/check-admin").get(isAuthenticated, (req, res) => {
 });
 
 // Admin user management routes
-router.route("/admin/users").get(isAuthenticated, verifyAdmin, async (req, res) => {
+router.route("/admin/users").get(verifyToken, verifyAdmin, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
@@ -115,7 +115,7 @@ router.route("/admin/users").get(isAuthenticated, verifyAdmin, async (req, res) 
 });
 
 // Update user details
-router.route("/admin/:userId").put(isAuthenticated, verifyAdmin, async (req, res) => {
+router.route("/admin/:userId").put(verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
     const { username, email, isAdmin, isBlocked } = req.body;
@@ -159,7 +159,7 @@ router.route("/admin/:userId").put(isAuthenticated, verifyAdmin, async (req, res
 });
 
 // Make user admin
-router.route("/admin/:userId/make-admin").put(isAuthenticated, verifyAdmin, async (req, res) => {
+router.route("/admin/:userId/make-admin").put(verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -191,7 +191,7 @@ router.route("/admin/:userId/make-admin").put(isAuthenticated, verifyAdmin, asyn
 });
 
 // Remove admin privileges
-router.route("/admin/:userId/remove-admin").put(isAuthenticated, verifyAdmin, async (req, res) => {
+router.route("/admin/:userId/remove-admin").put(verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -223,7 +223,7 @@ router.route("/admin/:userId/remove-admin").put(isAuthenticated, verifyAdmin, as
 });
 
 // Block user
-router.route("/admin/:userId/block").put(isAuthenticated, verifyAdmin, async (req, res) => {
+router.route("/admin/:userId/block").put(verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -255,7 +255,7 @@ router.route("/admin/:userId/block").put(isAuthenticated, verifyAdmin, async (re
 });
 
 // Unblock user
-router.route("/admin/:userId/unblock").put(isAuthenticated, verifyAdmin, async (req, res) => {
+router.route("/admin/:userId/unblock").put(verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
 

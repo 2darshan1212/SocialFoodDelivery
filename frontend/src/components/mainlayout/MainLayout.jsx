@@ -6,9 +6,13 @@ import { Outlet } from "react-router-dom";
 import { Home, Bell, PlusSquare, MessageCircle, Menu } from "lucide-react";
 import MobileNavItem from "../left/MobileNavItem";
 import MobileSidebar from "../left/MobileSidebar";
+import useGetCurrentUser from "../../hooks/useGetCurrentUser";
 
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // Ensure current user data is loaded
+  useGetCurrentUser();
   
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);

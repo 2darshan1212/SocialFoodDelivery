@@ -81,13 +81,22 @@ const MyDeliveries = () => {
     
     // Debug: Log active orders coordinates when component mounts
     if (activeOrders && activeOrders.length > 0) {
-      console.log('Active orders on mount:', activeOrders.length);
-      activeOrders.forEach(order => {
-        console.log(`Order ${order._id} pickup:`, order.pickupLocation?.coordinates);
-        console.log(`Order ${order._id} delivery:`, order.deliveryLocation?.coordinates);
-        console.log(`Order ${order._id} restaurant:`, order.restaurant?.location?.coordinates);
-        console.log(`Order ${order._id} user:`, order.userLocation?.coordinates);
+      console.log('🚚 MyDeliveries Debug - Active orders on mount:', activeOrders.length);
+      activeOrders.forEach((order, index) => {
+        console.log(`🚚 Order ${index + 1} (${order._id}):`, {
+          pickup: order.pickupLocation?.coordinates,
+          delivery: order.deliveryLocation?.coordinates,
+          restaurant: order.restaurant?.location?.coordinates,
+          user: order.userLocation?.coordinates || order.user?.location?.coordinates,
+          status: order.status || order.deliveryStatus,
+          pickupLatLng: [order.pickupLatitude, order.pickupLongitude],
+          deliveryLatLng: [order.deliveryLatitude, order.deliveryLongitude],
+          hasZeroPickup: order.pickupLocation?.coordinates?.[0] === 0 && order.pickupLocation?.coordinates?.[1] === 0,
+          hasZeroDelivery: order.deliveryLocation?.coordinates?.[0] === 0 && order.deliveryLocation?.coordinates?.[1] === 0
+        });
       });
+    } else {
+      console.log('🚚 MyDeliveries Debug - No active orders found');
     }
     
     // Fix any active deliveries with [0,0] coordinates

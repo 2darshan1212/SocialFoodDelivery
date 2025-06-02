@@ -21,8 +21,8 @@ import rtnSlice from "./rtnSlice"
 import adminSlice from "./adminSlice";
 import deliverySlice from "./deliverySlice";
 import walletSlice from './walletSlice';
-import confirmedOrdersSlice from './confirmedOrdersSlice';
 import { createLogger } from 'redux-logger';
+import coordinatePreservationMiddleware from './coordinatePreservationMiddleware';
 
 // Create logger instance
 const logger = createLogger({
@@ -36,7 +36,7 @@ const persistConfig = {
   key: "root",
   storage,
   version: 1,
-  blacklist: ['socket', 'cart', 'delivery', 'confirmedOrders'], // Don't persist socket, cart, delivery, or confirmedOrders in root
+  blacklist: ['socket', 'cart', 'delivery'], // Don't persist socket, cart, delivery in root
 };
 
 // Separate config for cart slice
@@ -66,13 +66,6 @@ const walletPersistConfig = {
   blacklist: ['paymentStatus', 'paymentError'], // Don't persist these transient states
 };
 
-// Config for confirmed orders slice
-const confirmedOrdersPersistConfig = {
-  key: 'confirmedOrders',
-  storage,
-  blacklist: ['isLoading', 'error', 'acceptingOrderId'], // Don't persist these transient states
-};
-
 const rootReducer = combineReducers({
   auth: authSlice,
   post: postSlice,
@@ -85,7 +78,6 @@ const rootReducer = combineReducers({
   admin: adminSlice,
   delivery: persistReducer(deliveryPersistConfig, deliverySlice),
   wallet: persistReducer(walletPersistConfig, walletSlice),
-  confirmedOrders: persistReducer(confirmedOrdersPersistConfig, confirmedOrdersSlice),
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
@@ -105,7 +97,7 @@ const store = configureStore({
           REGISTER,
         ],
       },
-    }).concat(logger),
+    }).concat(logger, coordinatePreservationMiddleware),
   devTools: process.env.NODE_ENV !== 'production',
 });
 

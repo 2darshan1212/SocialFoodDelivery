@@ -17,6 +17,9 @@ import {
   AccordionSummary,
   AccordionDetails,
   Alert,
+  Container,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import {
   ArrowLeft,
@@ -41,6 +44,9 @@ const PostDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -48,6 +54,7 @@ const PostDetail = () => {
   const [ratings, setRatings] = useState(null);
   const [loadingRatings, setLoadingRatings] = useState(false);
   const [registrationComplete, setRegistrationComplete] = useState(false);
+  
   const { user } = useSelector((store) => store.auth);
   const { isInitialized } = useStoryProtocol();
 
@@ -208,10 +215,19 @@ const PostDetail = () => {
 
     return (
       <Box>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-          <Box sx={{ textAlign: "center", mr: 3 }}>
+        <Box sx={{ 
+          display: "flex", 
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'center', sm: 'flex-start' }, 
+          mb: 2 
+        }}>
+          <Box sx={{ 
+            textAlign: "center", 
+            mr: { xs: 0, sm: 3 },
+            mb: { xs: 2, sm: 0 }
+          }}>
             <Typography
-              variant="h3"
+              variant={isMobile ? "h4" : "h3"}
               component="div"
               sx={{ fontWeight: "bold", color: "primary.main" }}
             >
@@ -221,44 +237,51 @@ const PostDetail = () => {
               value={ratings.average || 0}
               precision={0.5}
               readOnly
-              size="medium"
+              size={isMobile ? "small" : "medium"}
             />
             <Typography variant="body2" color="text.secondary">
               {ratings.count || 0} {ratings.count === 1 ? "rating" : "ratings"}
             </Typography>
           </Box>
-          <Box sx={{ flexGrow: 1 }}>
+
+          <Box sx={{ flex: 1, width: '100%' }}>
             {[5, 4, 3, 2, 1].map((star) => (
-              <Box
-                key={star}
-                sx={{ display: "flex", alignItems: "center", mb: 0.5 }}
-              >
-                <Typography variant="body2" sx={{ minWidth: "20px", mr: 1 }}>
+              <Box key={star} sx={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: 1,
+                mb: 0.5 
+              }}>
+                <Typography variant="body2" sx={{ 
+                  minWidth: { xs: '20px', sm: '30px' },
+                  fontSize: { xs: '0.875rem', sm: '1rem' }
+                }}>
                   {star}
                 </Typography>
-                <Box sx={{ width: "100%", mr: 1 }}>
-                  <LinearProgress
-                    variant="determinate"
-                    value={calculatePercentage(
-                      ratings.distribution?.[star] || 0
-                    )}
-                    sx={{
-                      height: 8,
-                      borderRadius: 1,
-                      backgroundColor: "grey.300",
-                      "& .MuiLinearProgress-bar": {
-                        backgroundColor:
-                          star > 3
-                            ? "success.main"
-                            : star > 1
-                            ? "warning.main"
-                            : "error.main",
-                      },
-                    }}
-                  />
-                </Box>
-                <Typography variant="body2" sx={{ minWidth: "35px" }}>
-                  {calculatePercentage(ratings.distribution?.[star] || 0)}%
+                <Star size={isMobile ? 12 : 16} className="text-yellow-500" />
+                <LinearProgress
+                  variant="determinate"
+                  value={calculatePercentage(ratings.distribution?.[star] || 0)}
+                  sx={{
+                    flex: 1,
+                    height: isMobile ? 6 : 8,
+                    borderRadius: 3,
+                    backgroundColor: "grey.200",
+                    "& .MuiLinearProgress-bar": {
+                      backgroundColor: "warning.main",
+                      borderRadius: 3,
+                    },
+                  }}
+                />
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{ 
+                    minWidth: { xs: '30px', sm: '40px' },
+                    fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                  }}
+                >
+                  ({ratings.distribution?.[star] || 0})
                 </Typography>
               </Box>
             ))}
@@ -266,18 +289,40 @@ const PostDetail = () => {
         </Box>
 
         {ratings.userRating && (
-          <Box sx={{ mt: 2, p: 2, bgcolor: "primary.50", borderRadius: 1 }}>
+          <Box sx={{ 
+            mt: 2, 
+            p: { xs: 1.5, sm: 2 }, 
+            bgcolor: "primary.50", 
+            borderRadius: 1 
+          }}>
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
               Your Rating
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center" }}>
-              <Rating value={ratings.userRating.value} readOnly size="small" />
-              <Typography variant="body2" sx={{ ml: 1 }}>
+              <Rating 
+                value={ratings.userRating.value} 
+                readOnly 
+                size={isMobile ? "small" : "small"} 
+              />
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  ml: 1,
+                  fontSize: { xs: '0.75rem', sm: '0.875rem' }
+                }}
+              >
                 {new Date(ratings.userRating.createdAt).toLocaleDateString()}
               </Typography>
             </Box>
             {ratings.userRating.comment && (
-              <Typography variant="body2" sx={{ mt: 1, fontStyle: "italic" }}>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  mt: 1, 
+                  fontStyle: "italic",
+                  fontSize: { xs: '0.875rem', sm: '1rem' }
+                }}
+              >
                 "{ratings.userRating.comment}"
               </Typography>
             )}
@@ -291,62 +336,118 @@ const PostDetail = () => {
   console.log("Render state:", { loading, error, hasPost: !!post });
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-4">
-      <div className="flex items-center mb-6">
-        <IconButton onClick={() => navigate(-1)}>
-          <ArrowLeft />
+    <Container 
+      maxWidth="xl" 
+      sx={{ 
+        px: { xs: 2, sm: 3 }, 
+        py: { xs: 2, sm: 3 },
+        flex: 1 
+      }}
+    >
+      {/* Header with responsive back button */}
+      <div className="flex items-center mb-4 sm:mb-6">
+        <IconButton 
+          onClick={() => navigate(-1)}
+          size={isMobile ? "small" : "medium"}
+          sx={{ mr: 1 }}
+        >
+          <ArrowLeft size={isMobile ? 20 : 24} />
         </IconButton>
-        <h1 className="text-xl font-semibold ml-2">Post Details</h1>
+        <Typography 
+          variant={isMobile ? "h6" : "h5"} 
+          component="h1" 
+          sx={{ fontWeight: 'bold' }}
+        >
+          Post Details
+        </Typography>
       </div>
 
       {loading ? (
         <Box className="flex justify-center py-8">
-          <CircularProgress />
+          <CircularProgress size={isMobile ? 40 : 60} />
         </Box>
       ) : error && !post ? (
-        <div className="p-4 bg-red-50 text-red-600 rounded-md">
-          {error}
+        <Paper 
+          elevation={1}
+          sx={{ 
+            p: { xs: 3, sm: 4 }, 
+            bgcolor: "error.50",
+            border: 1,
+            borderColor: "error.200",
+            borderRadius: 2
+          }}
+        >
+          <Typography 
+            color="error.main" 
+            sx={{ 
+              mb: 2,
+              fontSize: { xs: '0.875rem', sm: '1rem' }
+            }}
+          >
+            {error}
+          </Typography>
           <Button
-            variant="text"
+            variant="outlined"
             color="primary"
             onClick={() => navigate(-1)}
-            className="mt-2"
+            size={isMobile ? "small" : "medium"}
           >
             Go Back
           </Button>
-        </div>
+        </Paper>
       ) : post ? (
         <>
-          <PostCard post={post} />
+          {/* Main Post Card */}
+          <Box sx={{ mb: { xs: 2, sm: 3 } }}>
+            <PostCard post={post} />
+          </Box>
 
           {/* Ratings Summary Section */}
-          <Paper elevation={1} sx={{ p: 3, mt: 3, borderRadius: 2 }}>
+          <Paper 
+            elevation={1} 
+            sx={{ 
+              p: { xs: 2, sm: 3 }, 
+              mt: { xs: 2, sm: 3 }, 
+              borderRadius: 2 
+            }}
+          >
             <Box
               sx={{
                 display: "flex",
+                flexDirection: { xs: 'column', sm: 'row' },
                 justifyContent: "space-between",
-                alignItems: "center",
+                alignItems: { xs: 'flex-start', sm: 'center' },
                 mb: 2,
+                gap: { xs: 2, sm: 0 }
               }}
             >
               <Typography
-                variant="h6"
+                variant={isMobile ? "subtitle1" : "h6"}
                 component="h2"
-                sx={{ display: "flex", alignItems: "center" }}
+                sx={{ 
+                  display: "flex", 
+                  alignItems: "center",
+                  fontWeight: 'bold'
+                }}
               >
-                <Star size={20} className="mr-2" /> Ratings & Reviews
+                <Star size={isMobile ? 18 : 20} className="mr-2" /> 
+                Ratings & Reviews
               </Typography>
               <Button
                 variant="contained"
                 color="primary"
-                size="small"
+                size={isMobile ? "small" : "medium"}
                 onClick={() =>
                   document
                     .querySelector(`button[data-post-id="${post._id}"]`)
                     ?.click()
                 }
+                sx={{ 
+                  minWidth: { xs: 'auto', sm: 'auto' },
+                  whiteSpace: 'nowrap'
+                }}
               >
-                {ratings?.userRating ? "Update Your Rating" : "Rate This Food"}
+                {ratings?.userRating ? "Update Rating" : "Rate This Food"}
               </Button>
             </Box>
             <Divider sx={{ mb: 2 }} />
@@ -355,22 +456,35 @@ const PostDetail = () => {
 
           {/* Intellectual Property (IP) Section */}
           {user && (
-            <Paper elevation={1} sx={{ p: 3, mt: 3, borderRadius: 2 }}>
+            <Paper 
+              elevation={1} 
+              sx={{ 
+                p: { xs: 2, sm: 3 }, 
+                mt: { xs: 2, sm: 3 }, 
+                borderRadius: 2 
+              }}
+            >
               <Box
                 sx={{
                   display: "flex",
+                  flexDirection: { xs: 'column', sm: 'row' },
                   justifyContent: "space-between",
-                  alignItems: "center",
+                  alignItems: { xs: 'flex-start', sm: 'center' },
                   mb: 2,
+                  gap: { xs: 2, sm: 0 }
                 }}
               >
                 <Typography
-                  variant="h6"
+                  variant={isMobile ? "subtitle1" : "h6"}
                   component="h2"
-                  sx={{ display: "flex", alignItems: "center" }}
+                  sx={{ 
+                    display: "flex", 
+                    alignItems: "center",
+                    fontWeight: 'bold'
+                  }}
                 >
-                  <Shield size={20} className="mr-2" /> Intellectual Property
-                  Rights
+                  <Shield size={isMobile ? 18 : 20} className="mr-2" /> 
+                  Intellectual Property Rights
                 </Typography>
 
                 {/* Show registration button for post owners */}
@@ -398,9 +512,9 @@ const PostDetail = () => {
               <Divider sx={{ mb: 2 }} />
 
               {post.ipRegistered || registrationComplete ? (
-                <Accordion defaultExpanded>
+                <Accordion defaultExpanded={!isMobile}>
                   <AccordionSummary expandIcon={<ChevronDown />}>
-                    <Typography variant="subtitle1">
+                    <Typography variant={isMobile ? "body1" : "subtitle1"}>
                       Recipe IP Information
                     </Typography>
                   </AccordionSummary>
@@ -412,22 +526,40 @@ const PostDetail = () => {
                 <Box>
                   {post.author?._id === user?._id ? (
                     <Alert severity="info" sx={{ mb: 2 }}>
-                      You can register this recipe as intellectual property to
-                      protect your creation. Complete the registration to
-                      establish ownership and set licensing terms.
+                      <Typography 
+                        variant={isMobile ? "body2" : "body1"}
+                        sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+                      >
+                        You can register this recipe as intellectual property to
+                        protect your creation. Complete the registration to
+                        establish ownership and set licensing terms.
+                      </Typography>
                     </Alert>
                   ) : (
                     <Alert severity="info" sx={{ mb: 2 }}>
-                      This recipe has not been registered for intellectual
-                      property protection yet.
+                      <Typography 
+                        variant={isMobile ? "body2" : "body1"}
+                        sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+                      >
+                        This recipe has not been registered for intellectual
+                        property protection yet.
+                      </Typography>
                     </Alert>
                   )}
 
                   <Box sx={{ mt: 3 }}>
-                    <Typography variant="subtitle2" gutterBottom>
+                    <Typography 
+                      variant={isMobile ? "body1" : "subtitle2"}
+                      gutterBottom
+                      sx={{ fontWeight: 'bold' }}
+                    >
                       What is IP protection for recipes?
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography 
+                      variant="body2" 
+                      color="text.secondary"
+                      sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+                    >
                       Registering a recipe with Story Protocol establishes
                       ownership rights and allows creators to set licensing
                       terms for commercial use, derivatives, and attribution
@@ -442,66 +574,142 @@ const PostDetail = () => {
           )}
 
           {/* Extra interaction section */}
-          <div className="bg-white rounded-xl shadow-lg p-4 mt-4">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">Engagement</h2>
-              <div className="flex gap-2">
+          <Paper 
+            elevation={1}
+            sx={{ 
+              p: { xs: 2, sm: 3 }, 
+              mt: { xs: 2, sm: 3 }, 
+              borderRadius: 2 
+            }}
+          >
+            <Box sx={{ 
+              display: "flex", 
+              flexDirection: { xs: 'column', sm: 'row' },
+              justifyContent: "space-between", 
+              alignItems: { xs: 'flex-start', sm: 'center' }, 
+              mb: { xs: 2, sm: 3 },
+              gap: { xs: 2, sm: 1 }
+            }}>
+              <Typography 
+                variant={isMobile ? "h6" : "h5"} 
+                component="h2"
+                sx={{ fontWeight: 'bold' }}
+              >
+                Engagement
+              </Typography>
+              <Box sx={{ 
+                display: "flex", 
+                gap: { xs: 1, sm: 2 },
+                flexWrap: 'wrap'
+              }}>
                 <Button
                   variant="outlined"
-                  startIcon={<Heart size={16} />}
+                  startIcon={<Heart size={isMobile ? 14 : 16} />}
                   color="error"
+                  size={isMobile ? "small" : "medium"}
                 >
-                  {post.likes?.length || 0} Likes
+                  {post.likes?.length || 0} Like{post.likes?.length !== 1 ? 's' : ''}
                 </Button>
                 <Button
                   variant="outlined"
-                  startIcon={<MessageCircle size={16} />}
+                  startIcon={<MessageCircle size={isMobile ? 14 : 16} />}
                   onClick={openComments}
                   color="primary"
+                  size={isMobile ? "small" : "medium"}
                 >
-                  {post.comments?.length || 0} Comments
+                  {post.comments?.length || 0} Comment{post.comments?.length !== 1 ? 's' : ''}
                 </Button>
-              </div>
-            </div>
+              </Box>
+            </Box>
 
-            <Divider className="my-3" />
+            <Divider sx={{ mb: { xs: 2, sm: 3 } }} />
 
-            <div className="mt-4">
-              <h3 className="font-medium mb-2">Recent Activity</h3>
+            <Box>
+              <Typography 
+                variant={isMobile ? "subtitle1" : "h6"} 
+                sx={{ 
+                  fontWeight: 'medium', 
+                  mb: { xs: 1, sm: 2 }
+                }}
+              >
+                Recent Activity
+              </Typography>
+              
               {post.likes && post.likes.length > 0 ? (
-                <p>
+                <Typography 
+                  variant="body2"
+                  sx={{ 
+                    mb: 1,
+                    fontSize: { xs: '0.875rem', sm: '1rem' }
+                  }}
+                >
                   Liked by {post.likes.length}{" "}
                   {post.likes.length === 1 ? "person" : "people"}
-                </p>
+                </Typography>
               ) : (
-                <p className="text-gray-500">No likes yet</p>
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{ 
+                    mb: 1,
+                    fontSize: { xs: '0.875rem', sm: '1rem' }
+                  }}
+                >
+                  No likes yet
+                </Typography>
               )}
 
               {post.comments && post.comments.length > 0 ? (
-                <div className="mt-2">
-                  <p
-                    className="cursor-pointer text-blue-500 hover:underline"
-                    onClick={openComments}
-                  >
-                    View all {post.comments.length} comments
-                  </p>
-                </div>
+                <Typography
+                  variant="body2"
+                  onClick={openComments}
+                  sx={{
+                    cursor: "pointer",
+                    color: "primary.main",
+                    "&:hover": { textDecoration: "underline" },
+                    fontSize: { xs: '0.875rem', sm: '1rem' }
+                  }}
+                >
+                  View all {post.comments.length} comment{post.comments.length !== 1 ? 's' : ''}
+                </Typography>
               ) : (
-                <p className="text-gray-500 mt-2">No comments yet</p>
+                <Typography 
+                  variant="body2" 
+                  color="text.secondary"
+                  sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}
+                >
+                  No comments yet
+                </Typography>
               )}
-            </div>
-          </div>
+            </Box>
+          </Paper>
         </>
       ) : (
-        <div className="p-4 bg-gray-100 rounded-md">Post not found</div>
+        <Paper 
+          elevation={1}
+          sx={{ 
+            p: { xs: 3, sm: 4 }, 
+            bgcolor: "grey.100",
+            borderRadius: 2
+          }}
+        >
+          <Typography 
+            variant="body1" 
+            color="text.secondary"
+            sx={{ textAlign: 'center' }}
+          >
+            Post not found
+          </Typography>
+        </Paper>
       )}
 
+      {/* Comment Dialog */}
       <CommentDialog
         open={commentDialogOpen}
         setOpen={setCommentDialogOpen}
         post={post}
       />
-    </div>
+    </Container>
   );
 };
 

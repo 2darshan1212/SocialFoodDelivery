@@ -172,15 +172,34 @@ const Header = () => {
   useEffect(() => {
     async function fetchCategories() {
       try {
-        const res = await axios.get(`${API_BASE_URL}/api/v1/post/search?q=`, {
-          withCredentials: true,
-        });
+        // Use a different approach to fetch categories
+        // First try to get categories from a search with a common term
+        let res;
+        try {
+          res = await axios.get(`${API_BASE_URL}/api/v1/post/search?q=food&limit=1`, {
+            withCredentials: true,
+          });
+        } catch (searchError) {
+          // If that fails, try with just a minimal query to get categories
+          console.log("Trying alternative category fetch method...");
+          res = await axios.get(`${API_BASE_URL}/api/v1/category`, {
+            withCredentials: true,
+          });
+        }
+        
         if (res.data.categories && res.data.categories.length > 0) {
           setCategories(["All", ...res.data.categories]);
+        } else if (res.data && Array.isArray(res.data)) {
+          // Handle direct category array response
+          setCategories(["All", ...res.data.map(cat => cat.name || cat)]);
+        } else {
+          // Fallback categories
+          setCategories(["All", "Italian", "Chinese", "Indian", "Mexican", "Thai", "Fast Food"]);
         }
       } catch (e) {
         console.error("Error fetching categories:", e);
-        setCategories(["All"]);
+        // Use fallback categories
+        setCategories(["All", "Italian", "Chinese", "Indian", "Mexican", "Thai", "Fast Food"]);
       }
     }
     fetchCategories();
@@ -1407,15 +1426,34 @@ const Header = () => {
         <div className="flex items-center gap-2">
           <Link to={`/profile/${user?._id}`}>
             <Avatar
-              alt="User"
-              src={user?.profilePicture}
+              alt={user?.username || "User"}
+              src={user?.profilePicture || ''}
               className="cursor-pointer"
-            />
+              sx={{ 
+                width: 32, 
+                height: 32,
+                bgcolor: user?.profilePicture ? 'transparent' : '#ff6b35',
+                border: '2px solid #ff6b35'
+              }}
+              onClick={() => {
+                console.log('Profile clicked - User data:', {
+                  id: user?._id,
+                  username: user?.username,
+                  profilePicture: user?.profilePicture,
+                  hasUser: !!user
+                });
+              }}
+            >
+              {!user?.profilePicture && user?.username ? 
+                user.username.charAt(0).toUpperCase() : 
+                'U'
+              }
+            </Avatar>
           </Link>
 
           <p
             onClick={logoutHandler}
-            className="px-4 py-2 mt-3 text-sm font-semibold text-white bg-orange-500 rounded-sm hover:bg-orange-600 transition"
+            className="px-4 py-2 mt-3 text-sm font-semibold text-white bg-orange-500 rounded-sm hover:bg-orange-600 transition cursor-pointer"
           >
             Logout
           </p>

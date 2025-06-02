@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import axiosInstance from "../../utils/axiosInstance";
 import {
   Box,
   Container,
@@ -24,29 +24,49 @@ import {
   Snackbar,
   Chip,
   Grid,
+  Card,
+  CardContent,
+  CardActions,
+  useMediaQuery,
+  useTheme,
+  Fab,
+  Stack,
+  Divider,
+  Tooltip
 } from "@mui/material";
 import {
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Image as ImageIcon,
+  Edit,
+  Delete,
+  Add,
+  Refresh,
+  Category,
+  Restaurant,
+  Fastfood,
+  LocalDining
 } from "@mui/icons-material";
 
 const CategoriesManagement = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [openAddDialog, setOpenAddDialog] = useState(false);
-  const [openEditDialog, setOpenEditDialog] = useState(false);
-  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [formData, setFormData] = useState({ name: "", description: "" });
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+  });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
-  const [notification, setNotification] = useState({
+  const [snackbar, setSnackbar] = useState({
     open: false,
     message: "",
-    severity: "info",
+    severity: "success",
   });
 
   // Fetch categories on component mount
@@ -59,12 +79,9 @@ const CategoriesManagement = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await axios.get(
-        "https://socialfooddelivery-2.onrender.com/api/v1/category/all",
-        {
-          withCredentials: true,
-        }
-      );
+      const response = await axiosInstance.get("/category/all", {
+        withCredentials: true,
+      });
       setCategories(response.data.categories || []);
     } catch (err) {
       console.error("Error fetching categories:", err);
@@ -98,7 +115,7 @@ const CategoriesManagement = () => {
     setFormData({ name: "", description: "" });
     setImageFile(null);
     setImagePreview("");
-    setOpenAddDialog(true);
+    setCreateDialogOpen(true);
   };
 
   // Open edit category dialog
@@ -110,20 +127,20 @@ const CategoriesManagement = () => {
     });
     setImagePreview(category.image || "");
     setImageFile(null);
-    setOpenEditDialog(true);
+    setEditDialogOpen(true);
   };
 
   // Open delete category dialog
   const handleOpenDeleteDialog = (category) => {
     setSelectedCategory(category);
-    setOpenDeleteDialog(true);
+    setDeleteDialogOpen(true);
   };
 
   // Close all dialogs
   const handleCloseDialogs = () => {
-    setOpenAddDialog(false);
-    setOpenEditDialog(false);
-    setOpenDeleteDialog(false);
+    setCreateDialogOpen(false);
+    setEditDialogOpen(false);
+    setDeleteDialogOpen(false);
   };
 
   // Add a new category
@@ -139,18 +156,14 @@ const CategoriesManagement = () => {
         formDataObj.append("categoryImage", imageFile);
       }
 
-      await axios.post(
-        "https://socialfooddelivery-2.onrender.com/api/v1/category/create",
-        formDataObj,
-        {
-          withCredentials: true,
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      await axiosInstance.post("/category/create", formDataObj, {
+        withCredentials: true,
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-      setNotification({
+      setSnackbar({
         open: true,
         message: "Category added successfully!",
         severity: "success",
@@ -160,7 +173,7 @@ const CategoriesManagement = () => {
       fetchCategories();
     } catch (err) {
       console.error("Error adding category:", err);
-      setNotification({
+      setSnackbar({
         open: true,
         message: err.response?.data?.message || "Failed to add category",
         severity: "error",
@@ -183,18 +196,14 @@ const CategoriesManagement = () => {
         formDataObj.append("categoryImage", imageFile);
       }
 
-      await axios.put(
-        `https://socialfooddelivery-2.onrender.com/api/v1/category/${selectedCategory._id}`,
-        formDataObj,
-        {
-          withCredentials: true,
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      await axiosInstance.put(`/category/${selectedCategory._id}`, formDataObj, {
+        withCredentials: true,
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-      setNotification({
+      setSnackbar({
         open: true,
         message: "Category updated successfully!",
         severity: "success",
@@ -204,7 +213,7 @@ const CategoriesManagement = () => {
       fetchCategories();
     } catch (err) {
       console.error("Error updating category:", err);
-      setNotification({
+      setSnackbar({
         open: true,
         message: err.response?.data?.message || "Failed to update category",
         severity: "error",
@@ -219,14 +228,11 @@ const CategoriesManagement = () => {
     try {
       setLoading(true);
 
-      await axios.delete(
-        `https://socialfooddelivery-2.onrender.com/api/v1/category/${selectedCategory._id}`,
-        {
-          withCredentials: true,
-        }
-      );
+      await axiosInstance.delete(`/category/${selectedCategory._id}`, {
+        withCredentials: true,
+      });
 
-      setNotification({
+      setSnackbar({
         open: true,
         message: "Category deleted successfully!",
         severity: "success",
@@ -236,7 +242,7 @@ const CategoriesManagement = () => {
       fetchCategories();
     } catch (err) {
       console.error("Error deleting category:", err);
-      setNotification({
+      setSnackbar({
         open: true,
         message: err.response?.data?.message || "Failed to delete category",
         severity: "error",
@@ -248,130 +254,257 @@ const CategoriesManagement = () => {
 
   // Close notification
   const handleCloseNotification = () => {
-    setNotification((prev) => ({ ...prev, open: false }));
+    setSnackbar((prev) => ({ ...prev, open: false }));
+  };
+
+  // Category icons mapping
+  const getCategoryIcon = (categoryName) => {
+    const name = categoryName.toLowerCase();
+    if (name.includes('fast') || name.includes('burger') || name.includes('pizza')) {
+      return <Fastfood />;
+    } else if (name.includes('restaurant') || name.includes('dining')) {
+      return <LocalDining />;
+    } else if (name.includes('food') || name.includes('meal')) {
+      return <Restaurant />;
+    }
+    return <Category />;
+  };
+
+  // Mobile-friendly Category Card Component
+  const CategoryCard = ({ category }) => {
+    return (
+      <Card 
+        sx={{ 
+          mb: 2, 
+          boxShadow: 2,
+          '&:hover': { boxShadow: 4 },
+          transition: 'box-shadow 0.2s'
+        }}
+      >
+        <CardContent>
+          {/* Header */}
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Box sx={{ mr: 2, color: 'primary.main' }}>
+              {getCategoryIcon(category.name)}
+            </Box>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6" sx={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
+                {category.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {category.description || 'No description'}
+              </Typography>
+            </Box>
+          </Box>
+          
+          {/* Creation Date */}
+          <Typography variant="caption" color="text.secondary">
+            Created: {new Date(category.createdAt).toLocaleDateString()}
+          </Typography>
+        </CardContent>
+        
+        <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<Edit />}
+            onClick={() => handleOpenEditDialog(category)}
+          >
+            Edit
+          </Button>
+          
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<Delete />}
+            onClick={() => handleOpenDeleteDialog(category)}
+          >
+            Delete
+          </Button>
+        </CardActions>
+      </Card>
+    );
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 4 }}>
-        <Typography variant="h4" component="h1" fontWeight="bold">
-          Categories Management
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleOpenAddDialog}
-        >
-          Add Category
-        </Button>
-      </Box>
+    <Container maxWidth="xl" sx={{ mt: 3, mb: 5 }}>
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h5" component="h1">
+            Categories Management
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={handleOpenAddDialog}
+            size={isMobile ? "small" : "medium"}
+          >
+            Add Category
+          </Button>
+        </Box>
 
+        {/* Refresh button */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={fetchCategories}
+            disabled={refreshing}
+            size={isMobile ? "small" : "medium"}
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </Button>
+        </Box>
+      </Paper>
+
+      {/* Loading state */}
+      {loading && (
+        <Box sx={{ display: "flex", justifyContent: "center", my: 4 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {/* Error state */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
       )}
 
-      {loading && !categories.length ? (
-        <Box sx={{ display: "flex", justifyContent: "center", p: 5 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper} sx={{ mb: 4 }}>
-          <Table>
-            <TableHead sx={{ bgcolor: "primary.main" }}>
-              <TableRow>
-                <TableCell sx={{ color: "white" }}>Image</TableCell>
-                <TableCell sx={{ color: "white" }}>Name</TableCell>
-                <TableCell sx={{ color: "white" }}>Description</TableCell>
-                <TableCell sx={{ color: "white" }} align="center">
-                  Products
-                </TableCell>
-                <TableCell sx={{ color: "white" }} align="right">
-                  Actions
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+      {/* Categories content */}
+      {!loading && !error && (
+        <>
+          {/* Mobile view - Cards */}
+          {isMobile ? (
+            <Box>
               {categories.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} align="center">
-                    No categories found. Click "Add Category" to create one.
-                  </TableCell>
-                </TableRow>
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography variant="h6" color="text.secondary">
+                    No categories found
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Create your first category to get started
+                  </Typography>
+                </Paper>
               ) : (
                 categories.map((category) => (
-                  <TableRow key={category._id} hover>
-                    <TableCell>
-                      {category.image ? (
-                        <Box
-                          component="img"
-                          src={category.image}
-                          alt={category.name}
-                          sx={{
-                            width: 60,
-                            height: 60,
-                            objectFit: "cover",
-                            borderRadius: 1,
-                          }}
-                        />
-                      ) : (
-                        <Box
-                          sx={{
-                            width: 60,
-                            height: 60,
-                            bgcolor: "grey.200",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            borderRadius: 1,
-                          }}
-                        >
-                          <ImageIcon color="disabled" />
-                        </Box>
-                      )}
-                    </TableCell>
-                    <TableCell sx={{ fontWeight: "medium" }}>
-                      {category.name}
-                    </TableCell>
-                    <TableCell>
-                      {category.description || "No description"}
-                    </TableCell>
-                    <TableCell align="center">
-                      <Chip
-                        label={category.productCount || 0}
-                        color={category.productCount ? "primary" : "default"}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        color="primary"
-                        onClick={() => handleOpenEditDialog(category)}
-                        size="small"
-                        sx={{ mr: 1 }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        color="error"
-                        onClick={() => handleOpenDeleteDialog(category)}
-                        size="small"
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
+                  <CategoryCard key={category._id} category={category} />
                 ))
               )}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            </Box>
+          ) : (
+            /* Desktop view - Table */
+            <Paper>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Image</TableCell>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell>Created</TableCell>
+                      <TableCell align="center">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {categories.map((category) => (
+                      <TableRow key={category._id} hover>
+                        <TableCell>
+                          {category.image ? (
+                            <Box
+                              component="img"
+                              src={category.image}
+                              alt={category.name}
+                              sx={{
+                                width: 50,
+                                height: 50,
+                                objectFit: "cover",
+                                borderRadius: 1,
+                              }}
+                            />
+                          ) : (
+                            <Box
+                              sx={{
+                                width: 50,
+                                height: 50,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                backgroundColor: "grey.100",
+                                borderRadius: 1,
+                              }}
+                            >
+                              {getCategoryIcon(category.name)}
+                            </Box>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                            {category.name}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {category.description || "No description"}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {new Date(category.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                            <Tooltip title="Edit Category">
+                              <IconButton
+                                color="primary"
+                                onClick={() => handleOpenEditDialog(category)}
+                                size="small"
+                              >
+                                <Edit />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete Category">
+                              <IconButton
+                                color="error"
+                                onClick={() => handleOpenDeleteDialog(category)}
+                                size="small"
+                              >
+                                <Delete />
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          )}
+        </>
+      )}
+
+      {/* Floating action button for mobile add */}
+      {isMobile && (
+        <Fab
+          color="primary"
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            zIndex: 1000,
+          }}
+          onClick={handleOpenAddDialog}
+        >
+          <Add />
+        </Fab>
       )}
 
       {/* Add Category Dialog */}
       <Dialog
-        open={openAddDialog}
+        open={createDialogOpen}
         onClose={handleCloseDialogs}
         maxWidth="sm"
         fullWidth
@@ -404,7 +537,7 @@ const CategoriesManagement = () => {
               <Button
                 variant="outlined"
                 component="label"
-                startIcon={<ImageIcon />}
+                startIcon={<Category />}
                 sx={{ mb: 2 }}
               >
                 Upload Image
@@ -445,7 +578,7 @@ const CategoriesManagement = () => {
 
       {/* Edit Category Dialog */}
       <Dialog
-        open={openEditDialog}
+        open={editDialogOpen}
         onClose={handleCloseDialogs}
         maxWidth="sm"
         fullWidth
@@ -478,7 +611,7 @@ const CategoriesManagement = () => {
               <Button
                 variant="outlined"
                 component="label"
-                startIcon={<ImageIcon />}
+                startIcon={<Category />}
                 sx={{ mb: 2 }}
               >
                 Change Image
@@ -518,7 +651,7 @@ const CategoriesManagement = () => {
       </Dialog>
 
       {/* Delete Category Dialog */}
-      <Dialog open={openDeleteDialog} onClose={handleCloseDialogs}>
+      <Dialog open={deleteDialogOpen} onClose={handleCloseDialogs}>
         <DialogTitle>Delete Category</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -540,17 +673,17 @@ const CategoriesManagement = () => {
 
       {/* Notification Snackbar */}
       <Snackbar
-        open={notification.open}
+        open={snackbar.open}
         autoHideDuration={6000}
         onClose={handleCloseNotification}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert
           onClose={handleCloseNotification}
-          severity={notification.severity}
+          severity={snackbar.severity}
           sx={{ width: "100%" }}
         >
-          {notification.message}
+          {snackbar.message}
         </Alert>
       </Snackbar>
     </Container>

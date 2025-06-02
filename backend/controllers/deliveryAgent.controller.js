@@ -4,6 +4,23 @@ import { User } from "../models/user.model.js";
 import { io } from "../socket/socket.js";
 import createError from "../utils/error.js";
 
+// Helper function to calculate distance between two points using Haversine formula
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = lat1 * Math.PI/180; // φ, λ in radians
+  const φ2 = lat2 * Math.PI/180;
+  const Δφ = (lat2-lat1) * Math.PI/180;
+  const Δλ = (lon2-lon1) * Math.PI/180;
+
+  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ/2) * Math.sin(Δλ/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  const d = R * c; // in meters
+  return d;
+};
+
 // Register as a delivery agent
 export const registerAsDeliveryAgent = async (req, res, next) => {
   try {
@@ -336,8 +353,94 @@ export const acceptOrder = async (req, res, next) => {
     agent.activeOrders.push(order._id);
     await agent.save();
 
+    // Populate the order with all necessary data before returning
+    await order.populate([
+      {
+        path: 'user',
+        select: 'username email avatar location'
+      },
+      {
+        path: 'restaurant',
+        select: 'name location address'
+      },
+      {
+        path: 'items.post',
+        populate: {
+          path: 'author',
+          select: 'username location'
+        }
+      },
+      {
+        path: 'deliveryAgent',
+        select: 'user vehicleType vehicleNumber'
+      }
+    ]);
+
+    // Create the order object with enhanced location data
+    const orderObj = order.toObject();
+    
+    // Log original coordinates for debugging
+    console.log(`Backend acceptOrder - Original order ${order._id} coordinates:`, {
+      pickup: orderObj.pickupLocation?.coordinates,
+      delivery: orderObj.deliveryLocation?.coordinates,
+      restaurant: orderObj.restaurant?.location?.coordinates,
+      user: orderObj.user?.location?.coordinates
+    });
+    
+    // Ensure pickup location has valid coordinates
+    if (!orderObj.pickupLocation?.coordinates || 
+        (orderObj.pickupLocation.coordinates[0] === 0 && orderObj.pickupLocation.coordinates[1] === 0)) {
+      
+      // Use restaurant location for pickup if available
+      if (orderObj.restaurant?.location?.coordinates && 
+          Array.isArray(orderObj.restaurant.location.coordinates) && 
+          orderObj.restaurant.location.coordinates.length === 2 &&
+          (orderObj.restaurant.location.coordinates[0] !== 0 || orderObj.restaurant.location.coordinates[1] !== 0)) {
+        
+        orderObj.pickupLocation = {
+          type: "Point",
+          coordinates: [...orderObj.restaurant.location.coordinates]
+        };
+        console.log(`Backend - Fixed pickup location for accepted order ${orderObj._id} using restaurant coordinates`);
+      }
+      // Fallback to post author location if restaurant location not available
+      else if (orderObj.items && orderObj.items.length > 0 && 
+               orderObj.items[0]?.post?.author?.location?.coordinates) {
+        
+        orderObj.pickupLocation = {
+          type: "Point",
+          coordinates: [...orderObj.items[0].post.author.location.coordinates]
+        };
+        console.log(`Backend - Fixed pickup location for accepted order ${orderObj._id} using post author coordinates`);
+      }
+    }
+    
+    // Ensure delivery location has valid coordinates
+    if (!orderObj.deliveryLocation?.coordinates || 
+        (orderObj.deliveryLocation.coordinates[0] === 0 && orderObj.deliveryLocation.coordinates[1] === 0)) {
+      
+      // Use user location for delivery if available
+      if (orderObj.user?.location?.coordinates && 
+          Array.isArray(orderObj.user.location.coordinates) && 
+          orderObj.user.location.coordinates.length === 2 &&
+          (orderObj.user.location.coordinates[0] !== 0 || orderObj.user.location.coordinates[1] !== 0)) {
+        
+        orderObj.deliveryLocation = {
+          type: "Point",
+          coordinates: [...orderObj.user.location.coordinates]
+        };
+        console.log(`Backend - Fixed delivery location for accepted order ${orderObj._id} using user coordinates`);
+      }
+    }
+    
+    // Log final coordinates being sent
+    console.log(`Backend acceptOrder - Final order ${orderObj._id} coordinates being sent:`, {
+      pickup: orderObj.pickupLocation?.coordinates,
+      delivery: orderObj.deliveryLocation?.coordinates
+    });
+
     // Notify user that order is out for delivery
-    io.to(`user_${order.user}`).emit("orderStatusUpdate", {
+    io.to(`user_${order.user._id || order.user}`).emit("orderStatusUpdate", {
       orderId: order._id,
       status: "out_for_delivery",
       estimatedDeliveryTime,
@@ -352,7 +455,7 @@ export const acceptOrder = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       message: "Order accepted for delivery",
-      order,
+      order: orderObj, // Return the enhanced order object
     });
   } catch (error) {
     console.error("Error accepting order:", error);
@@ -630,7 +733,11 @@ export const getConfirmedOrders = async (req, res, next) => {
 // Reject an order (don't want to deliver it)
 export const rejectOrder = async (req, res, next) => {
   try {
-    // ... (rest of the code remains the same)
+    const { orderId } = req.params;
+    
+    if (!orderId) {
+      return next(createError(400, "Order ID is required"));
+    }
     
     // Get delivery agent
     const agent = await DeliveryAgent.findOne({ user: req.user.id });

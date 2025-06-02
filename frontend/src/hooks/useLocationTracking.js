@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setCurrentLocation, setAgentLocation } from '../redux/deliverySlice';
-import { updateAgentLocation as updateConfirmedOrdersAgentLocation } from '../redux/confirmedOrdersSlice';
 import { toast } from 'react-hot-toast';
 
 /**
@@ -62,7 +61,6 @@ const useLocationTracking = (enabled = true, interval = 10000) => {
           if (isDeliveryAgent) {
             // Update both slices for delivery agent
             dispatch(setAgentLocation({ latitude, longitude }));
-            dispatch(updateConfirmedOrdersAgentLocation({ latitude, longitude }));
           }
         } catch (err) {
           console.error('Failed to update location in Redux:', err);

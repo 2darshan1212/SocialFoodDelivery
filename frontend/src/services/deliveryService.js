@@ -160,9 +160,96 @@ export const getNearbyOrders = async () => {
 };
 
 // Accept an order for delivery
-export const acceptOrder = async (orderId) => {
+export const acceptOrder = async (orderId, originalOrder = null) => {
   try {
+    console.log(`📤 Accepting order ${orderId}...`);
+    
+    if (originalOrder) {
+      console.log('📍 Original order coordinates before API call:', {
+        id: originalOrder._id,
+        pickup: originalOrder.pickupLocation?.coordinates,
+        delivery: originalOrder.deliveryLocation?.coordinates
+      });
+    }
+    
     const response = await api.post(`/delivery/accept/${orderId}`);
+    
+    // Log the raw response for debugging
+    console.log('📥 Accept order raw response:', response.data);
+    
+    // Validate and fix coordinates in the response
+    if (response.data.order) {
+      const order = response.data.order;
+      console.log(`📍 Accepted order ${orderId} coordinates from backend:`, {
+        pickupLocation: order.pickupLocation,
+        deliveryLocation: order.deliveryLocation,
+        restaurant: order.restaurant?.location,
+        user: order.user?.location
+      });
+      
+      // If backend returned invalid coordinates but we have good ones from original order, use those
+      if (originalOrder) {
+        let coordinatesFixed = false;
+        
+        // Fix pickup coordinates if needed
+        if ((!order.pickupLocation?.coordinates || 
+             (order.pickupLocation.coordinates[0] === 0 && order.pickupLocation.coordinates[1] === 0)) &&
+            originalOrder.pickupLocation?.coordinates &&
+            (originalOrder.pickupLocation.coordinates[0] !== 0 || originalOrder.pickupLocation.coordinates[1] !== 0)) {
+          
+          order.pickupLocation = { ...originalOrder.pickupLocation };
+          coordinatesFixed = true;
+          console.warn(`⚠️ Fixed pickup coordinates for order ${orderId} using original order data`);
+        }
+        
+        // Fix delivery coordinates if needed
+        if ((!order.deliveryLocation?.coordinates || 
+             (order.deliveryLocation.coordinates[0] === 0 && order.deliveryLocation.coordinates[1] === 0)) &&
+            originalOrder.deliveryLocation?.coordinates &&
+            (originalOrder.deliveryLocation.coordinates[0] !== 0 || originalOrder.deliveryLocation.coordinates[1] !== 0)) {
+          
+          order.deliveryLocation = { ...originalOrder.deliveryLocation };
+          coordinatesFixed = true;
+          console.warn(`⚠️ Fixed delivery coordinates for order ${orderId} using original order data`);
+        }
+        
+        // Also preserve restaurant location if missing
+        if (!order.restaurant?.location && originalOrder.restaurant?.location) {
+          if (!order.restaurant) order.restaurant = {};
+          order.restaurant.location = { ...originalOrder.restaurant.location };
+          coordinatesFixed = true;
+        }
+        
+        // Preserve lat/lng fields if missing
+        if (!order.pickupLatitude && originalOrder.pickupLatitude) {
+          order.pickupLatitude = originalOrder.pickupLatitude;
+          order.pickupLongitude = originalOrder.pickupLongitude;
+        }
+        if (!order.deliveryLatitude && originalOrder.deliveryLatitude) {
+          order.deliveryLatitude = originalOrder.deliveryLatitude;
+          order.deliveryLongitude = originalOrder.deliveryLongitude;
+        }
+        
+        if (coordinatesFixed) {
+          console.log('✅ Coordinates fixed using original order data:', {
+            pickup: order.pickupLocation?.coordinates,
+            delivery: order.deliveryLocation?.coordinates
+          });
+        }
+      }
+      
+      // Final warning if coordinates are still invalid
+      if (!order.pickupLocation?.coordinates || 
+          (order.pickupLocation.coordinates[0] === 0 && order.pickupLocation.coordinates[1] === 0)) {
+        console.error(`❌ Order ${orderId} still has invalid pickup coordinates!`);
+      }
+      
+      if (!order.deliveryLocation?.coordinates || 
+          (order.deliveryLocation.coordinates[0] === 0 && order.deliveryLocation.coordinates[1] === 0)) {
+        console.error(`❌ Order ${orderId} still has invalid delivery coordinates!`);
+      }
+    }
+    
     return response.data;
   } catch (error) {
     console.error("Failed to accept order:", error);

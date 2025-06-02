@@ -131,7 +131,7 @@ export const fetchAllOrders = createAsyncThunk(
     try {
       const { page = 1, limit = 10, status, sortBy, sortOrder } = params || {};
 
-      let url = `/api/v1/orders/admin/all?page=${page}&limit=${limit}`;
+      let url = `/orders/admin/all?page=${page}&limit=${limit}`;
 
       if (status && status !== "all") {
         url += `&status=${status}`;
@@ -161,7 +161,7 @@ export const fetchOrderStats = createAsyncThunk(
   "admin/fetchOrderStats",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get("/api/v1/orders/admin/stats");
+      const response = await api.get("/orders/admin/stats");
       return response.data;
     } catch (error) {
       console.error("Error fetching order stats:", error);
@@ -180,7 +180,7 @@ export const updateOrderStatus = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const response = await api.put(`/api/v1/orders/admin/${orderId}/status`, {
+      const response = await api.put(`/orders/admin/${orderId}/status`, {
         status,
         paymentStatus,
         deliveryNotes,
@@ -201,7 +201,7 @@ export const fetchDeliveryStatusHistory = createAsyncThunk(
   async (orderId, { rejectWithValue }) => {
     try {
       const response = await api.get(
-        `/api/v1/orders/admin/${orderId}/status-history`
+        `/orders/admin/${orderId}/status-history`
       );
       return response.data;
     } catch (error) {
@@ -219,7 +219,7 @@ export const assignDeliveryAgent = createAsyncThunk(
   async ({ orderId, agentId }, { rejectWithValue }) => {
     try {
       const response = await api.put(
-        `/api/v1/orders/admin/${orderId}/assign-agent`,
+        `/orders/admin/${orderId}/assign-agent`,
         {
           agentId,
         }

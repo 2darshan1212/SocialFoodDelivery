@@ -48,59 +48,106 @@ import useCart from "../../hooks/useCart";
 
 // Define a GoogleMap component within the file
 const GoogleMapEmbed = ({ lat1, lon1, lat2, lon2, height = 400 }) => {
-  // Generate a static map URL with markers for both locations
-  const createStaticMapUrl = () => {
-    const zoom = 13;
-    const size = "600x400";
-    const mapType = "roadmap";
+  const [mapError, setMapError] = useState(false);
+  const [mapLoading, setMapLoading] = useState(true);
 
-    // Center point is the midpoint between the two locations
-    const centerLat = (lat1 + lat2) / 2;
-    const centerLon = (lon1 + lon2) / 2;
-
-    // Create marker parameters for user location (red) and vendor location (blue)
-    const markers = [
-      `color:red|label:U|${lat1},${lon1}`,
-      `color:blue|label:V|${lat2},${lon2}`,
-    ];
-
-    // Create a path between the two points
-    const path = `color:0x0000ff80|weight:5|${lat1},${lon1}|${lat2},${lon2}`;
-
-    // Assemble the URL
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${centerLat},${centerLon}&zoom=${zoom}&size=${size}&maptype=${mapType}&markers=${markers.join(
-      "&markers="
-    )}&path=${path}`;
+  // Validate coordinates
+  const isValidCoord = (lat, lon) => {
+    return !isNaN(lat) && !isNaN(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && (lat !== 0 || lon !== 0);
   };
+
+  if (!isValidCoord(lat1, lon1) || !isValidCoord(lat2, lon2)) {
+    return (
+      <div style={{ height, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#f5f5f5", border: "1px solid #ddd", borderRadius: "4px" }}>
+        <div style={{ textAlign: "center", color: "#666" }}>
+          <FiMapPin size={24} style={{ marginBottom: "8px" }} />
+          <p>Invalid coordinates provided</p>
+          <p style={{ fontSize: "12px" }}>({lat1}, {lon1}) → ({lat2}, {lon2})</p>
+        </div>
+      </div>
+    );
+  }
 
   // Alternative method using OpenStreetMap for embedded maps without API key
   const createOpenStreetMapUrl = () => {
-    // Calculate center point and appropriate zoom
-    const centerLat = (lat1 + lat2) / 2;
-    const centerLon = (lon1 + lon2) / 2;
+    try {
+      // Calculate center point and appropriate zoom
+      const centerLat = (lat1 + lat2) / 2;
+      const centerLon = (lon1 + lon2) / 2;
 
-    // You can adjust the zoom level based on the distance between points
-    const zoom = 13;
+      // Calculate appropriate zoom based on distance
+      const distance = Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lon2 - lon1, 2));
+      let zoom = 13;
+      if (distance > 0.1) zoom = 10;
+      else if (distance > 0.01) zoom = 12;
+      else if (distance < 0.001) zoom = 16;
 
-    // Create the iframe URL - this opens the map in a new window when clicked
-    return `https://www.openstreetmap.org/export/embed.html?bbox=${
-      centerLon - 0.02
-    }%2C${centerLat - 0.02}%2C${centerLon + 0.02}%2C${
-      centerLat + 0.02
-    }&layer=mapnik&marker=${lat1}%2C${lon1}%3B${lat2}%2C${lon2}`;
+      // Create bbox with padding
+      const padding = 0.01;
+      const bbox = `${centerLon - padding},${centerLat - padding},${centerLon + padding},${centerLat + padding}`;
+
+      // Create the iframe URL with markers
+      return `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${lat1},${lon1}&marker=${lat2},${lon2}`;
+    } catch (error) {
+      console.error("Error creating OpenStreetMap URL:", error);
+      return null;
+    }
   };
 
+  // Create a simple static map fallback
+  const createStaticMapFallback = () => {
+    return (
+      <div style={{ height, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: "#f0f8ff", border: "1px solid #ddd", borderRadius: "4px", padding: "20px" }}>
+        <FiMap size={32} style={{ marginBottom: "12px", color: "#4a90e2" }} />
+        <h3 style={{ margin: "0 0 8px 0", color: "#333" }}>Route Information</h3>
+        <div style={{ textAlign: "center", fontSize: "14px", color: "#666", lineHeight: "1.4" }}>
+          <p><strong>From:</strong> {lat1.toFixed(4)}, {lon1.toFixed(4)}</p>
+          <p><strong>To:</strong> {lat2.toFixed(4)}, {lon2.toFixed(4)}</p>
+          <p style={{ marginTop: "12px", fontSize: "12px", color: "#999" }}>
+            Interactive map temporarily unavailable
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const mapUrl = createOpenStreetMapUrl();
+
+  if (mapError || !mapUrl) {
+    return createStaticMapFallback();
+  }
+
   return (
-    <iframe
-      width="100%"
-      height={height}
-      frameBorder="0"
-      scrolling="no"
-      marginHeight="0"
-      marginWidth="0"
-      src={createOpenStreetMapUrl()}
-      style={{ border: "1px solid #ddd", borderRadius: "4px" }}
-    ></iframe>
+    <div style={{ position: "relative", height, width: "100%" }}>
+      {mapLoading && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: "#f5f5f5", zIndex: 1 }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ width: "24px", height: "24px", border: "3px solid #f3f3f3", borderTop: "3px solid #4a90e2", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 8px" }}></div>
+            <p style={{ fontSize: "12px", color: "#666" }}>Loading map...</p>
+          </div>
+        </div>
+      )}
+      <iframe
+        width="100%"
+        height={height}
+        frameBorder="0"
+        scrolling="no"
+        marginHeight="0"
+        marginWidth="0"
+        src={mapUrl}
+        style={{ border: "1px solid #ddd", borderRadius: "4px" }}
+        onLoad={() => setMapLoading(false)}
+        onError={() => {
+          setMapLoading(false);
+          setMapError(true);
+        }}
+      />
+      {!mapLoading && !mapError && (
+        <div style={{ position: "absolute", top: "8px", right: "8px", background: "rgba(255,255,255,0.9)", padding: "4px 8px", borderRadius: "4px", fontSize: "10px", color: "#666" }}>
+          Route Map
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -205,44 +252,96 @@ const haversineDistance = (coords1, coords2) => {
  */
 const getAddressFromCoords = async (coords) => {
   try {
-    if (!coords || !Array.isArray(coords) || coords.length !== 2) {
+    if (!coords || coords.length !== 2) {
       return null;
     }
 
     const [lat, lng] = coords;
 
-    // Use Nominatim API for reverse geocoding (OpenStreetMap)
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-      {
+    // Try multiple approaches for geocoding to handle CORS issues
+    let data;
+    
+    try {
+      // First attempt: Use a CORS proxy for Nominatim
+      const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+      const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      
+      const response = await fetch(proxyUrl + nominatimUrl, {
         headers: {
           "Accept-Language": "en",
           "User-Agent": "FoodDeliveryApp/1.0",
+          "X-Requested-With": "XMLHttpRequest"
         },
+      });
+
+      if (!response.ok) {
+        throw new Error(`CORS Proxy Error: ${response.status}`);
       }
-    );
 
-    if (!response.ok) {
-      throw new Error(`Error: ${response.status}`);
+      data = await response.json();
+      
+    } catch (corsError) {
+      console.warn("CORS proxy failed, trying alternative method:", corsError);
+      
+      try {
+        // Second attempt: Use a public CORS proxy
+        const altProxyUrl = 'https://api.allorigins.win/get?url=';
+        const nominatimUrl = encodeURIComponent(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+        
+        const response = await fetch(altProxyUrl + nominatimUrl);
+        const result = await response.json();
+        
+        if (result.contents) {
+          data = JSON.parse(result.contents);
+        } else {
+          throw new Error("No data from alternative proxy");
+        }
+        
+      } catch (altError) {
+        console.warn("Alternative proxy failed, using fallback address:", altError);
+        
+        // Fallback: Generate a generic address based on coordinates
+        return {
+          fullAddress: `Location at ${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+          city: "Unknown City",
+          state: "Unknown State", 
+          country: "Unknown Country",
+          road: "Unknown Street",
+          postalCode: "Unknown",
+          raw: { coordinates: [lat, lng] },
+        };
+      }
     }
-
-    const data = await response.json();
 
     return {
       fullAddress: data.display_name,
       city:
-        data.address.city ||
-        data.address.town ||
-        data.address.village ||
+        data.address?.city ||
+        data.address?.town ||
+        data.address?.village ||
         "Unknown",
-      state: data.address.state || "Unknown",
-      country: data.address.country || "Unknown",
-      road: data.address.road || "Unknown",
-      postalCode: data.address.postcode || "Unknown",
+      state: data.address?.state || "Unknown",
+      country: data.address?.country || "Unknown",
+      road: data.address?.road || "Unknown",
+      postalCode: data.address?.postcode || "Unknown",
       raw: data,
     };
   } catch (error) {
     console.error("Error fetching address:", error);
+    
+    // Return a fallback address with coordinates
+    if (coords && coords.length === 2) {
+      return {
+        fullAddress: `Location at ${coords[0].toFixed(4)}, ${coords[1].toFixed(4)}`,
+        city: "Unknown City",
+        state: "Unknown State",
+        country: "Unknown Country", 
+        road: "Unknown Street",
+        postalCode: "Unknown",
+        raw: { coordinates: coords },
+      };
+    }
+    
     return null;
   }
 };
@@ -527,6 +626,36 @@ const RatingSummary = ({ postId, initialRating, onClose }) => {
 
 const PostCard = ({ post }) => {
   const { user } = useSelector((store) => store.auth);
+  
+  // Add CSS for spinner animation
+  useEffect(() => {
+    if (!document.getElementById('spinner-animation-css')) {
+      const style = document.createElement('style');
+      style.id = 'spinner-animation-css';
+      style.textContent = `
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+  
+  // Add debugging for coordinate issues
+  useEffect(() => {
+    if (post) {
+      console.log('🗺️ PostCard Debug - Post data:', {
+        postId: post._id,
+        authorId: post.author?._id,
+        authorLocation: post.author?.location,
+        userLocation: user?.location,
+        authorCoords: post.author?.location?.coordinates,
+        userCoords: user?.location?.coordinates
+      });
+    }
+  }, [post, user]);
+
   const [liked, setLiked] = useState(
     post?.likes && user?._id ? post.likes.includes(user._id) : false
   );
@@ -644,13 +773,25 @@ const PostCard = ({ post }) => {
       setLocationErrorMsg("");
       setDistanceDetails(null);
 
-      // Debug logging
-      console.log("User location data:", user?.location);
-      console.log("Post author location data:", post?.author?.location);
+      // Enhanced debugging
+      console.log('🗺️ PostCard Distance Calculation Debug:', {
+        postId: post?._id,
+        postAuthor: post?.author?.username,
+        userLocation: {
+          exists: !!user?.location,
+          coordinates: user?.location?.coordinates,
+          type: user?.location?.type
+        },
+        postAuthorLocation: {
+          exists: !!post?.author?.location,
+          coordinates: post?.author?.location?.coordinates,
+          type: post?.author?.location?.type
+        }
+      });
 
       // Check if we have both user and post location data
       if (!user?.location) {
-        console.log("Missing user location data");
+        console.log('❌ Missing user location data');
         setLocationStatus("missing");
         setLocationErrorMsg("Your location is not set");
         setDistance(null);
@@ -658,7 +799,7 @@ const PostCard = ({ post }) => {
       }
 
       if (!post?.author?.location) {
-        console.log("Missing post author location data");
+        console.log('❌ Missing post author location data');
         setLocationStatus("missing");
         setLocationErrorMsg("Vendor's location is not available");
         setDistance(null);
@@ -669,40 +810,50 @@ const PostCard = ({ post }) => {
       const userCoords = user.location.coordinates;
       const postAuthorCoords = post.author.location.coordinates;
 
-      console.log("User coordinates:", userCoords);
-      console.log("Post author coordinates:", postAuthorCoords);
+      console.log('🗺️ Extracted coordinates:', {
+        userCoords,
+        postAuthorCoords,
+        userCoordsType: Array.isArray(userCoords) ? 'array' : typeof userCoords,
+        postAuthorCoordsType: Array.isArray(postAuthorCoords) ? 'array' : typeof postAuthorCoords
+      });
 
       // Validate coordinates
-      if (
-        !userCoords ||
-        !Array.isArray(userCoords) ||
-        userCoords.length !== 2
-      ) {
-        console.warn("Invalid user coordinates format:", userCoords);
+      if (!userCoords || !Array.isArray(userCoords) || userCoords.length !== 2) {
+        console.warn('❌ Invalid user coordinates format:', userCoords);
         setLocationStatus("error");
         setLocationErrorMsg("Your location data is invalid");
         setDistance(null);
         return;
       }
 
-      if (
-        !postAuthorCoords ||
-        !Array.isArray(postAuthorCoords) ||
-        postAuthorCoords.length !== 2
-      ) {
-        console.warn(
-          "Invalid post author coordinates format:",
-          postAuthorCoords
-        );
+      if (!postAuthorCoords || !Array.isArray(postAuthorCoords) || postAuthorCoords.length !== 2) {
+        console.warn('❌ Invalid post author coordinates format:', postAuthorCoords);
         setLocationStatus("error");
         setLocationErrorMsg("Vendor location data is invalid");
         setDistance(null);
         return;
       }
 
+      // Check for [0,0] coordinates
+      if (userCoords[0] === 0 && userCoords[1] === 0) {
+        console.warn('❌ User coordinates are [0,0]');
+        setLocationStatus("error");
+        setLocationErrorMsg("Your location shows as [0,0] - please update your location");
+        setDistance(null);
+        return;
+      }
+
+      if (postAuthorCoords[0] === 0 && postAuthorCoords[1] === 0) {
+        console.warn('❌ Post author coordinates are [0,0]');
+        setLocationStatus("error");
+        setLocationErrorMsg("Vendor location shows as [0,0]");
+        setDistance(null);
+        return;
+      }
+
       // Calculate the detailed distance
       const distData = haversineDistance(userCoords, postAuthorCoords);
-      console.log("Calculated distance details:", distData);
+      console.log('🗺️ Calculated distance details:', distData);
 
       if (!distData) {
         setLocationStatus("error");
@@ -719,6 +870,11 @@ const PostCard = ({ post }) => {
           const userAddrCoords = [userCoords[1], userCoords[0]];
           const vendorAddrCoords = [postAuthorCoords[1], postAuthorCoords[0]];
 
+          console.log('🗺️ Fetching addresses for coordinates:', {
+            userAddrCoords,
+            vendorAddrCoords
+          });
+
           const [userAddr, vendorAddr] = await Promise.all([
             getAddressFromCoords(userAddrCoords),
             getAddressFromCoords(vendorAddrCoords),
@@ -729,12 +885,12 @@ const PostCard = ({ post }) => {
             vendor: vendorAddr,
           });
         } catch (addrError) {
-          console.error("Error fetching address info:", addrError);
+          console.error("❌ Error fetching address info:", addrError);
           // We don't fail the whole operation just because address fetch failed
         }
       }
     } catch (error) {
-      console.error("Error in distance calculation:", error);
+      console.error("❌ Error in distance calculation:", error);
       setLocationStatus("error");
       setLocationErrorMsg("An error occurred calculating distance");
       setDistance(null);

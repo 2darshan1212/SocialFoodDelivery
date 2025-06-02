@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import axiosInstance from "../../utils/axiosInstance";
 import {
   Box,
   Container,
@@ -30,41 +30,50 @@ import {
   Tooltip,
   Pagination,
   Grid,
+  Card,
+  CardContent,
+  CardActions,
+  useMediaQuery,
+  useTheme,
+  Fab,
+  Stack,
+  Divider
 } from "@mui/material";
 import {
-  Search as SearchIcon,
-  Edit as EditIcon,
-  AdminPanelSettings as AdminIcon,
-  Person as PersonIcon,
-  Block as BlockIcon,
-  Check as CheckIcon,
-  Refresh as RefreshIcon,
+  Edit,
+  Delete,
+  Search,
+  Add,
+  AdminPanelSettings,
+  Block,
+  Person,
+  Email,
+  Shield,
+  ShieldOutlined,
+  CheckCircle,
+  Cancel,
+  Refresh
 } from "@mui/icons-material";
 
 const UsersManagement = () => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [openEditDialog, setOpenEditDialog] = useState(false);
-  const [openAdminDialog, setOpenAdminDialog] = useState(false);
-  const [openBlockDialog, setOpenBlockDialog] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [formData, setFormData] = useState({
-    username: "",
-    email: "",
-    isAdmin: false,
-    isBlocked: false,
-  });
-  const [notification, setNotification] = useState({
-    open: false,
-    message: "",
-    severity: "info",
-  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [refreshing, setRefreshing] = useState(false);
-
+  const [searchQuery, setSearchQuery] = useState("");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: "",
+    severity: "success",
+  });
+  
   const ROWS_PER_PAGE = 10;
 
   // Fetch users on component mount and when search/page changes
@@ -86,11 +95,8 @@ const UsersManagement = () => {
         params.append("q", searchQuery);
       }
 
-      const response = await axios.get(
-        `https://socialfooddelivery-2.onrender.com/api/v1/user/admin/users?${params.toString()}`,
-        {
-          withCredentials: true,
-        }
+      const response = await axiosInstance.get(
+        `/user/admin/users?${params.toString()}`
       );
 
       if (response.data.success) {
@@ -114,14 +120,6 @@ const UsersManagement = () => {
     setPage(1); // Reset to first page on new search
   };
 
-  // Handle form input changes
-  const handleInputChange = (e) => {
-    const { name, value, checked } = e.target;
-    const newValue =
-      name === "isAdmin" || name === "isBlocked" ? checked : value;
-    setFormData((prev) => ({ ...prev, [name]: newValue }));
-  };
-
   // Handle page change
   const handlePageChange = (event, newPage) => {
     setPage(newPage);
@@ -134,34 +132,14 @@ const UsersManagement = () => {
   };
 
   // Open edit user dialog
-  const handleOpenEditDialog = (user) => {
+  const handleEditUser = (user) => {
     setSelectedUser(user);
-    setFormData({
-      username: user.username,
-      email: user.email,
-      isAdmin: user.isAdmin || false,
-      isBlocked: user.isBlocked || false,
-    });
-    setOpenEditDialog(true);
+    setEditDialogOpen(true);
   };
 
-  // Open make admin dialog
-  const handleOpenAdminDialog = (user) => {
-    setSelectedUser(user);
-    setOpenAdminDialog(true);
-  };
-
-  // Open block user dialog
-  const handleOpenBlockDialog = (user) => {
-    setSelectedUser(user);
-    setOpenBlockDialog(true);
-  };
-
-  // Close all dialogs
-  const handleCloseDialogs = () => {
-    setOpenEditDialog(false);
-    setOpenAdminDialog(false);
-    setOpenBlockDialog(false);
+  // Close edit user dialog
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
   };
 
   // Update user details
@@ -169,34 +147,31 @@ const UsersManagement = () => {
     try {
       setLoading(true);
 
-      const response = await axios.put(
-        `https://socialfooddelivery-2.onrender.com/api/v1/user/admin/${selectedUser._id}`,
+      const response = await axiosInstance.put(
+        `/user/admin/${selectedUser._id}`,
         {
-          username: formData.username,
-          email: formData.email,
-          isAdmin: formData.isAdmin,
-          isBlocked: formData.isBlocked,
-        },
-        {
-          withCredentials: true,
+          username: selectedUser.username,
+          email: selectedUser.email,
+          isAdmin: selectedUser.isAdmin,
+          isBlocked: selectedUser.isBlocked,
         }
       );
 
       if (response.data.success) {
-        setNotification({
+        setSnackbar({
           open: true,
           message: "User updated successfully!",
           severity: "success",
         });
 
-        handleCloseDialogs();
+        handleCloseEditDialog();
         fetchUsers();
       } else {
         throw new Error(response.data.message || "Failed to update user");
       }
     } catch (err) {
       console.error("Error updating user:", err);
-      setNotification({
+      setSnackbar({
         open: true,
         message: err.response?.data?.message || "Failed to update user",
         severity: "error",
@@ -207,23 +182,20 @@ const UsersManagement = () => {
   };
 
   // Toggle admin status
-  const handleToggleAdmin = async () => {
+  const toggleAdminStatus = async (user) => {
     try {
       setLoading(true);
 
-      const newAdminStatus = !selectedUser.isAdmin;
+      const newAdminStatus = !user.isAdmin;
       const endpoint = newAdminStatus ? "make-admin" : "remove-admin";
 
-      const response = await axios.put(
-        `https://socialfooddelivery-2.onrender.com/api/v1/user/admin/${selectedUser._id}/${endpoint}`,
-        {},
-        {
-          withCredentials: true,
-        }
+      const response = await axiosInstance.put(
+        `/user/admin/${user._id}/${endpoint}`,
+        {}
       );
 
       if (response.data.success) {
-        setNotification({
+        setSnackbar({
           open: true,
           message: `User ${
             newAdminStatus ? "promoted to admin" : "demoted from admin"
@@ -231,7 +203,7 @@ const UsersManagement = () => {
           severity: "success",
         });
 
-        handleCloseDialogs();
+        handleCloseEditDialog();
         fetchUsers();
       } else {
         throw new Error(
@@ -241,7 +213,7 @@ const UsersManagement = () => {
       }
     } catch (err) {
       console.error("Error toggling admin status:", err);
-      setNotification({
+      setSnackbar({
         open: true,
         message: err.response?.data?.message || "Failed to update admin status",
         severity: "error",
@@ -252,23 +224,20 @@ const UsersManagement = () => {
   };
 
   // Toggle block status
-  const handleToggleBlock = async () => {
+  const toggleUserBlock = async (user) => {
     try {
       setLoading(true);
 
-      const newBlockStatus = !selectedUser.isBlocked;
+      const newBlockStatus = !user.isBlocked;
       const endpoint = newBlockStatus ? "block" : "unblock";
 
-      const response = await axios.put(
-        `https://socialfooddelivery-2.onrender.com/api/v1/user/admin/${selectedUser._id}/${endpoint}`,
-        {},
-        {
-          withCredentials: true,
-        }
+      const response = await axiosInstance.put(
+        `/user/admin/${user._id}/${endpoint}`,
+        {}
       );
 
       if (response.data.success) {
-        setNotification({
+        setSnackbar({
           open: true,
           message: `User ${
             newBlockStatus ? "blocked" : "unblocked"
@@ -276,7 +245,7 @@ const UsersManagement = () => {
           severity: "success",
         });
 
-        handleCloseDialogs();
+        handleCloseEditDialog();
         fetchUsers();
       } else {
         throw new Error(
@@ -286,7 +255,7 @@ const UsersManagement = () => {
       }
     } catch (err) {
       console.error("Error toggling block status:", err);
-      setNotification({
+      setSnackbar({
         open: true,
         message: err.response?.data?.message || "Failed to update block status",
         severity: "error",
@@ -298,187 +267,346 @@ const UsersManagement = () => {
 
   // Close notification
   const handleCloseNotification = () => {
-    setNotification((prev) => ({ ...prev, open: false }));
+    setSnackbar((prev) => ({ ...prev, open: false }));
+  };
+
+  // Mobile-friendly User Card Component
+  const UserCard = ({ user }) => {
+    return (
+      <Card 
+        sx={{ 
+          mb: 2, 
+          boxShadow: 2,
+          '&:hover': { boxShadow: 4 },
+          transition: 'box-shadow 0.2s'
+        }}
+      >
+        <CardContent>
+          {/* Header */}
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Avatar 
+              src={user.profilePicture} 
+              sx={{ width: 48, height: 48, mr: 2 }}
+            >
+              {user.username.charAt(0).toUpperCase()}
+            </Avatar>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="h6" sx={{ fontSize: '1.1rem', fontWeight: 'bold' }}>
+                {user.username}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {user.email}
+              </Typography>
+            </Box>
+          </Box>
+          
+          {/* Status Chips */}
+          <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+            {user.isBlocked ? (
+              <Chip
+                label="Blocked"
+                color="error"
+                size="small"
+                icon={<Block />}
+              />
+            ) : (
+              <Chip
+                label="Active"
+                color="success"
+                size="small"
+                icon={<CheckCircle />}
+              />
+            )}
+            
+            {user.isAdmin ? (
+              <Chip
+                label="Admin"
+                color="primary"
+                size="small"
+                icon={<AdminPanelSettings />}
+              />
+            ) : (
+              <Chip
+                label="User"
+                variant="outlined"
+                size="small"
+                icon={<Person />}
+              />
+            )}
+          </Stack>
+          
+          {/* Creation Date */}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Joined: {new Date(user.createdAt).toLocaleDateString()}
+          </Typography>
+        </CardContent>
+        
+        <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<Edit />}
+              onClick={() => handleEditUser(user)}
+            >
+              Edit
+            </Button>
+            
+            <Button
+              size="small"
+              variant="outlined"
+              color={user.isAdmin ? "error" : "primary"}
+              startIcon={<AdminPanelSettings />}
+              onClick={() => toggleAdminStatus(user)}
+            >
+              {user.isAdmin ? "Remove Admin" : "Make Admin"}
+            </Button>
+          </Box>
+          
+          <Button
+            size="small"
+            variant="outlined"
+            color={user.isBlocked ? "success" : "error"}
+            startIcon={user.isBlocked ? <CheckCircle /> : <Block />}
+            onClick={() => toggleUserBlock(user)}
+          >
+            {user.isBlocked ? "Unblock" : "Block"}
+          </Button>
+        </CardActions>
+      </Card>
+    );
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ display: "flex", justifyContent: "space-between", mb: 4 }}>
-        <Typography variant="h4" component="h1" fontWeight="bold">
+    <Container maxWidth="xl" sx={{ mt: 3, mb: 5 }}>
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h5" component="h1" gutterBottom>
           Users Management
         </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          {refreshing ? "Refreshing..." : "Refresh"}
-        </Button>
-      </Box>
-
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <TextField
-          fullWidth
-          variant="outlined"
-          placeholder="Search users by username or email"
-          value={searchQuery}
-          onChange={handleSearchChange}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-        />
+        
+        {/* Search and controls */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          <Grid item xs={12} md={8}>
+            <TextField
+              fullWidth
+              placeholder="Search by username or email..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search />
+                  </InputAdornment>
+                ),
+              }}
+              size={isMobile ? "small" : "medium"}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={handleRefresh}
+              disabled={refreshing}
+              fullWidth={isMobile}
+              size={isMobile ? "small" : "medium"}
+            >
+              {refreshing ? "Refreshing..." : "Refresh"}
+            </Button>
+          </Grid>
+        </Grid>
       </Paper>
 
+      {/* Loading state */}
+      {loading && (
+        <Box sx={{ display: "flex", justifyContent: "center", my: 4 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {/* Error state */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
       )}
 
-      {loading && !users.length ? (
-        <Box sx={{ display: "flex", justifyContent: "center", p: 5 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
+      {/* Users content */}
+      {!loading && !error && (
         <>
-          <TableContainer component={Paper} sx={{ mb: 2 }}>
-            <Table>
-              <TableHead sx={{ bgcolor: "primary.main" }}>
-                <TableRow>
-                  <TableCell sx={{ color: "white" }}>User</TableCell>
-                  <TableCell sx={{ color: "white" }}>Email</TableCell>
-                  <TableCell sx={{ color: "white" }}>Status</TableCell>
-                  <TableCell sx={{ color: "white" }} align="center">
-                    Role
-                  </TableCell>
-                  <TableCell sx={{ color: "white" }} align="right">
-                    Actions
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {users.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center">
-                      No users found.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  users.map((user) => (
-                    <TableRow key={user._id} hover>
-                      <TableCell>
-                        <Box sx={{ display: "flex", alignItems: "center" }}>
-                          <Avatar
-                            src={user.profilePicture}
-                            alt={user.username}
-                            sx={{ mr: 2 }}
-                          />
-                          <Typography variant="body1" fontWeight="medium">
-                            {user.username}
-                          </Typography>
-                        </Box>
-                      </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>
-                        {user.isBlocked ? (
-                          <Chip
-                            label="Blocked"
-                            color="error"
-                            size="small"
-                            icon={<BlockIcon />}
-                          />
-                        ) : (
-                          <Chip
-                            label="Active"
-                            color="success"
-                            size="small"
-                            icon={<CheckIcon />}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        {user.isAdmin ? (
-                          <Chip
-                            label="Admin"
-                            color="primary"
-                            size="small"
-                            icon={<AdminIcon />}
-                          />
-                        ) : (
-                          <Chip
-                            label="User"
-                            variant="outlined"
-                            size="small"
-                            icon={<PersonIcon />}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        <Tooltip title="Edit User">
-                          <IconButton
-                            color="primary"
-                            onClick={() => handleOpenEditDialog(user)}
-                            size="small"
-                            sx={{ mr: 1 }}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                        </Tooltip>
-
-                        <Tooltip
-                          title={user.isAdmin ? "Remove Admin" : "Make Admin"}
-                        >
-                          <IconButton
-                            color={user.isAdmin ? "secondary" : "info"}
-                            onClick={() => handleOpenAdminDialog(user)}
-                            size="small"
-                            sx={{ mr: 1 }}
-                          >
-                            <AdminIcon />
-                          </IconButton>
-                        </Tooltip>
-
-                        <Tooltip
-                          title={user.isBlocked ? "Unblock User" : "Block User"}
-                        >
-                          <IconButton
-                            color={user.isBlocked ? "success" : "error"}
-                            onClick={() => handleOpenBlockDialog(user)}
-                            size="small"
-                          >
-                            {user.isBlocked ? <CheckIcon /> : <BlockIcon />}
-                          </IconButton>
-                        </Tooltip>
-                      </TableCell>
+          {/* Mobile view - Cards */}
+          {isMobile ? (
+            <Box>
+              {users.length === 0 ? (
+                <Paper sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography variant="h6" color="text.secondary">
+                    No users found
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Try adjusting your search query
+                  </Typography>
+                </Paper>
+              ) : (
+                users.map((user) => (
+                  <UserCard key={user._id} user={user} />
+                ))
+              )}
+            </Box>
+          ) : (
+            /* Desktop view - Table */
+            <Paper>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>User</TableCell>
+                      <TableCell>Email</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Role</TableCell>
+                      <TableCell>Joined</TableCell>
+                      <TableCell align="center">Actions</TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {users.map((user) => (
+                      <TableRow key={user._id} hover>
+                        <TableCell>
+                          <Box sx={{ display: "flex", alignItems: "center" }}>
+                            <Avatar 
+                              src={user.profilePicture} 
+                              sx={{ width: 40, height: 40, mr: 2 }}
+                            >
+                              {user.username.charAt(0).toUpperCase()}
+                            </Avatar>
+                            <Typography variant="body2">
+                              {user.username}
+                            </Typography>
+                          </Box>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {user.email}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {user.isBlocked ? (
+                            <Chip
+                              label="Blocked"
+                              color="error"
+                              size="small"
+                              icon={<Block />}
+                            />
+                          ) : (
+                            <Chip
+                              label="Active"
+                              color="success"
+                              size="small"
+                              icon={<CheckCircle />}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {user.isAdmin ? (
+                            <Chip
+                              label="Admin"
+                              color="primary"
+                              size="small"
+                              icon={<AdminPanelSettings />}
+                            />
+                          ) : (
+                            <Chip
+                              label="User"
+                              variant="outlined"
+                              size="small"
+                              icon={<Person />}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">
+                            {new Date(user.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                            <Tooltip title="Edit User">
+                              <IconButton
+                                color="primary"
+                                onClick={() => handleEditUser(user)}
+                                size="small"
+                              >
+                                <Edit />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title={user.isAdmin ? "Remove Admin" : "Make Admin"}>
+                              <IconButton
+                                color={user.isAdmin ? "error" : "primary"}
+                                onClick={() => toggleAdminStatus(user)}
+                                size="small"
+                              >
+                                <AdminPanelSettings />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title={user.isBlocked ? "Unblock User" : "Block User"}>
+                              <IconButton
+                                color={user.isBlocked ? "success" : "error"}
+                                onClick={() => toggleUserBlock(user)}
+                                size="small"
+                              >
+                                {user.isBlocked ? <CheckCircle /> : <Block />}
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          )}
 
-          <Box sx={{ display: "flex", justifyContent: "center", mt: 2 }}>
+          {/* Pagination */}
+          <Box sx={{ display: "flex", justifyContent: "center", mt: 3 }}>
             <Pagination
               count={totalPages}
               page={page}
               onChange={handlePageChange}
               color="primary"
+              size={isMobile ? "small" : "medium"}
               showFirstButton
               showLastButton
+              sx={{
+                '& .MuiPagination-ul': {
+                  flexWrap: 'wrap',
+                  justifyContent: 'center',
+                }
+              }}
             />
           </Box>
         </>
       )}
 
+      {/* Floating action button for mobile refresh */}
+      {isMobile && (
+        <Fab
+          color="primary"
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            zIndex: 1000,
+          }}
+          onClick={handleRefresh}
+        >
+          <Refresh />
+        </Fab>
+      )}
+
       {/* Edit User Dialog */}
       <Dialog
-        open={openEditDialog}
-        onClose={handleCloseDialogs}
+        open={editDialogOpen}
+        onClose={handleCloseEditDialog}
         maxWidth="sm"
         fullWidth
       >
@@ -489,8 +617,8 @@ const UsersManagement = () => {
               <TextField
                 name="username"
                 label="Username"
-                value={formData.username}
-                onChange={handleInputChange}
+                value={selectedUser?.username}
+                onChange={(e) => setSelectedUser((prev) => ({ ...prev, username: e.target.value }))}
                 fullWidth
                 required
               />
@@ -499,8 +627,8 @@ const UsersManagement = () => {
               <TextField
                 name="email"
                 label="Email"
-                value={formData.email}
-                onChange={handleInputChange}
+                value={selectedUser?.email}
+                onChange={(e) => setSelectedUser((prev) => ({ ...prev, email: e.target.value }))}
                 fullWidth
                 required
                 type="email"
@@ -510,8 +638,8 @@ const UsersManagement = () => {
               <FormControlLabel
                 control={
                   <Switch
-                    checked={formData.isAdmin}
-                    onChange={handleInputChange}
+                    checked={selectedUser?.isAdmin}
+                    onChange={(e) => setSelectedUser((prev) => ({ ...prev, isAdmin: e.target.checked }))}
                     name="isAdmin"
                     color="primary"
                   />
@@ -523,8 +651,8 @@ const UsersManagement = () => {
               <FormControlLabel
                 control={
                   <Switch
-                    checked={formData.isBlocked}
-                    onChange={handleInputChange}
+                    checked={selectedUser?.isBlocked}
+                    onChange={(e) => setSelectedUser((prev) => ({ ...prev, isBlocked: e.target.checked }))}
                     name="isBlocked"
                     color="error"
                   />
@@ -535,94 +663,30 @@ const UsersManagement = () => {
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialogs}>Cancel</Button>
+          <Button onClick={handleCloseEditDialog}>Cancel</Button>
           <Button
             onClick={handleUpdateUser}
             variant="contained"
-            disabled={!formData.username || !formData.email || loading}
+            disabled={!selectedUser?.username || !selectedUser?.email || loading}
           >
             {loading ? <CircularProgress size={24} /> : "Update"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Admin Status Dialog */}
-      <Dialog open={openAdminDialog} onClose={handleCloseDialogs}>
-        <DialogTitle>
-          {selectedUser?.isAdmin
-            ? "Remove Admin Privileges"
-            : "Grant Admin Privileges"}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {selectedUser?.isAdmin
-              ? `Are you sure you want to remove admin privileges from ${selectedUser?.username}?`
-              : `Are you sure you want to grant admin privileges to ${selectedUser?.username}? This will give them access to the admin panel and all administrative functions.`}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialogs}>Cancel</Button>
-          <Button
-            onClick={handleToggleAdmin}
-            color={selectedUser?.isAdmin ? "error" : "primary"}
-            variant="contained"
-            disabled={loading}
-          >
-            {loading ? (
-              <CircularProgress size={24} />
-            ) : selectedUser?.isAdmin ? (
-              "Remove Admin"
-            ) : (
-              "Make Admin"
-            )}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Block User Dialog */}
-      <Dialog open={openBlockDialog} onClose={handleCloseDialogs}>
-        <DialogTitle>
-          {selectedUser?.isBlocked ? "Unblock User" : "Block User"}
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {selectedUser?.isBlocked
-              ? `Are you sure you want to unblock ${selectedUser?.username}? This will allow them to use the system again.`
-              : `Are you sure you want to block ${selectedUser?.username}? This will prevent them from logging in and using the system.`}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDialogs}>Cancel</Button>
-          <Button
-            onClick={handleToggleBlock}
-            color={selectedUser?.isBlocked ? "success" : "error"}
-            variant="contained"
-            disabled={loading}
-          >
-            {loading ? (
-              <CircularProgress size={24} />
-            ) : selectedUser?.isBlocked ? (
-              "Unblock User"
-            ) : (
-              "Block User"
-            )}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       {/* Notification Snackbar */}
       <Snackbar
-        open={notification.open}
+        open={snackbar.open}
         autoHideDuration={6000}
         onClose={handleCloseNotification}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert
           onClose={handleCloseNotification}
-          severity={notification.severity}
+          severity={snackbar.severity}
           sx={{ width: "100%" }}
         >
-          {notification.message}
+          {snackbar.message}
         </Alert>
       </Snackbar>
     </Container>

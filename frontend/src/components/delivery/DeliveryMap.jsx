@@ -47,18 +47,18 @@ const DeliveryMap = ({
   // Get delivery orders from the delivery slice for the My Deliveries view
   const myAssignedOrders = useSelector(state => state.delivery?.assignedOrders) || [];
   const myNearbyOrders = useSelector(state => state.delivery?.nearbyOrders) || [];
-  const myAcceptedOrders = useSelector(state => state.delivery?.acceptedOrders) || [];
+  const myActiveDeliveries = useSelector(state => state.delivery?.activeDeliveries) || [];
   
   // Log delivery orders for debugging
   console.log('%c Delivery store data:', 'background: #fff0e6; color: #cc6600; font-weight: bold;', {
     assignedCount: myAssignedOrders.length,
     nearbyCount: myNearbyOrders.length,
-    acceptedCount: myAcceptedOrders.length,
-    firstAssigned: myAssignedOrders.length > 0 ? {
-      id: myAssignedOrders[0]._id,
-      coordinates: myAssignedOrders[0].pickupLocation?.coordinates,
-      lat: myAssignedOrders[0].pickupLatitude,
-      lng: myAssignedOrders[0].pickupLongitude
+    activeCount: myActiveDeliveries.length,
+    firstActive: myActiveDeliveries.length > 0 ? {
+      id: myActiveDeliveries[0]._id,
+      coordinates: myActiveDeliveries[0].pickupLocation?.coordinates,
+      lat: myActiveDeliveries[0].pickupLatitude,
+      lng: myActiveDeliveries[0].pickupLongitude
     } : null
   });
   
@@ -259,7 +259,7 @@ const DeliveryMap = ({
       myDeliveryOrders: {
         assigned: myAssignedOrders.length > 0 ? myAssignedOrders[0].pickupLocation?.coordinates : null,
         nearby: myNearbyOrders.length > 0 ? myNearbyOrders[0].pickupLocation?.coordinates : null,
-        accepted: myAcceptedOrders.length > 0 ? myAcceptedOrders[0].pickupLocation?.coordinates : null
+        active: myActiveDeliveries.length > 0 ? myActiveDeliveries[0].pickupLocation?.coordinates : null
       }
     });
     
@@ -280,11 +280,11 @@ const DeliveryMap = ({
       pickupCoords = [myAssignedOrders[0].pickupLocation.coordinates[1], myAssignedOrders[0].pickupLocation.coordinates[0]];
       console.log('Using myAssignedOrders pickup coordinates:', pickupCoords);
     }
-    // 4. Check for coordinates in accepted delivery orders
-    else if (myAcceptedOrders.length > 0 && myAcceptedOrders[0].pickupLocation?.coordinates && 
-             hasValidCoordinates(myAcceptedOrders[0].pickupLocation.coordinates)) {
-      pickupCoords = [myAcceptedOrders[0].pickupLocation.coordinates[1], myAcceptedOrders[0].pickupLocation.coordinates[0]];
-      console.log('Using myAcceptedOrders pickup coordinates:', pickupCoords);
+    // 4. Check for coordinates in active delivery orders
+    else if (myActiveDeliveries.length > 0 && myActiveDeliveries[0].pickupLocation?.coordinates && 
+             hasValidCoordinates(myActiveDeliveries[0].pickupLocation.coordinates)) {
+      pickupCoords = [myActiveDeliveries[0].pickupLocation.coordinates[1], myActiveDeliveries[0].pickupLocation.coordinates[0]];
+      console.log('Using myActiveDeliveries pickup coordinates:', pickupCoords);
     }
     // 5. Check for coordinates in nearby delivery orders
     else if (myNearbyOrders.length > 0 && myNearbyOrders[0].pickupLocation?.coordinates && 
@@ -319,7 +319,7 @@ const DeliveryMap = ({
       myDeliveryOrders: {
         assigned: myAssignedOrders.length > 0 ? myAssignedOrders[0].deliveryLocation?.coordinates : null,
         nearby: myNearbyOrders.length > 0 ? myNearbyOrders[0].deliveryLocation?.coordinates : null,
-        accepted: myAcceptedOrders.length > 0 ? myAcceptedOrders[0].deliveryLocation?.coordinates : null
+        active: myActiveDeliveries.length > 0 ? myActiveDeliveries[0].deliveryLocation?.coordinates : null
       }
     });
     
@@ -340,11 +340,11 @@ const DeliveryMap = ({
       deliveryCoords = [myAssignedOrders[0].deliveryLocation.coordinates[1], myAssignedOrders[0].deliveryLocation.coordinates[0]];
       console.log('Using myAssignedOrders delivery coordinates:', deliveryCoords);
     }
-    // 4. Check for coordinates in accepted delivery orders
-    else if (myAcceptedOrders.length > 0 && myAcceptedOrders[0].deliveryLocation?.coordinates && 
-             hasValidCoordinates(myAcceptedOrders[0].deliveryLocation.coordinates)) {
-      deliveryCoords = [myAcceptedOrders[0].deliveryLocation.coordinates[1], myAcceptedOrders[0].deliveryLocation.coordinates[0]];
-      console.log('Using myAcceptedOrders delivery coordinates:', deliveryCoords);
+    // 4. Check for coordinates in active delivery orders
+    else if (myActiveDeliveries.length > 0 && myActiveDeliveries[0].deliveryLocation?.coordinates && 
+             hasValidCoordinates(myActiveDeliveries[0].deliveryLocation.coordinates)) {
+      deliveryCoords = [myActiveDeliveries[0].deliveryLocation.coordinates[1], myActiveDeliveries[0].deliveryLocation.coordinates[0]];
+      console.log('Using myActiveDeliveries delivery coordinates:', deliveryCoords);
     }
     // 5. Check for coordinates in nearby delivery orders
     else if (myNearbyOrders.length > 0 && myNearbyOrders[0].deliveryLocation?.coordinates && 
@@ -595,7 +595,7 @@ const DeliveryMap = ({
       console.log('Creating or updating map markers...');
       
       // Get latest coordinate data
-      const { agentCoords, pickupCoords, deliveryCoords } = getCoordinates();
+      let { agentCoords, pickupCoords, deliveryCoords } = getCoordinates();
       
       // Store valid points for bounds calculation
       const validPoints = [];

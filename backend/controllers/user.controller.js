@@ -669,8 +669,8 @@ export const searchUsers = async (req, res) => {
 
 export const getCurrentUser = async (req, res) => {
   try {
-    // Get userId from authenticated user
-    const userId = req.id;
+    // Get userId from authenticated user (verifyToken sets req.user)
+    const userId = req.user?.id;
     
     // Check if userId is valid
     if (!userId) {
@@ -720,7 +720,7 @@ export const getCurrentUser = async (req, res) => {
 export const getCurrentUserProfile = async (req, res) => {
   try {
     // Get the user ID from the request (set by the authentication middleware)
-    const userId = req.id;
+    const userId = req.user?.id;
     
     if (!userId) {
       return res.status(401).json({

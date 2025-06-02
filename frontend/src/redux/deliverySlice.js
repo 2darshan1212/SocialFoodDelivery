@@ -13,6 +13,30 @@ import {
   getConfirmedOrders
 } from "../services/deliveryService";
 import { calculateDistance } from "../utils/distanceUtils";
+import CoordinateDebugger from "../utils/coordinateDebugger";
+
+// Utility functions for coordinate handling
+const isValidCoordinate = (coord) => {
+  if (!Array.isArray(coord) || coord.length !== 2) return false;
+  const [lng, lat] = coord;
+  return (
+    typeof lng === 'number' && 
+    typeof lat === 'number' && 
+    !isNaN(lng) && 
+    !isNaN(lat) && 
+    lng >= -180 && 
+    lng <= 180 && 
+    lat >= -90 && 
+    lat <= 90 &&
+    !(lng === 0 && lat === 0) // Consider [0,0] invalid as it's often a default value
+  );
+};
+
+const validateOrderCoordinates = (order) => {
+  const hasValidPickup = isValidCoordinate(order?.pickupLocation?.coordinates);
+  const hasValidDelivery = isValidCoordinate(order?.deliveryLocation?.coordinates);
+  return { hasValidPickup, hasValidDelivery };
+};
 
 // Utility function to check if coordinates are valid and non-zero
 const hasValidCoordinates = (coords) => {
@@ -401,9 +425,16 @@ export const fetchNearbyOrders = createAsyncThunk(
 // Async thunk for accepting an order
 export const acceptDeliveryOrder = createAsyncThunk(
   "delivery/acceptOrder",
-  async (orderId, { rejectWithValue }) => {
+  async (orderId, { rejectWithValue, getState }) => {
     try {
-      const response = await acceptOrder(orderId);
+      // Get the original order from state to preserve coordinates
+      const state = getState();
+      const nearbyOrder = state.delivery?.nearbyOrders?.find(o => o._id === orderId);
+      const confirmedOrder = state.delivery?.confirmedOrders?.find(o => o._id === orderId);
+      const originalOrder = nearbyOrder || confirmedOrder;
+      
+      // Call the service with the original order for coordinate preservation
+      const response = await acceptOrder(orderId, originalOrder);
       return response;
     } catch (error) {
       return rejectWithValue(error.message || "Failed to accept order");
@@ -505,6 +536,8 @@ const initialState = {
   nearbyOrdersError: null,
   activeOrders: [],
   isActionPending: false,
+  isAcceptingOrder: false,
+  acceptOrderError: null,
   actionError: null,
   deliveryHistory: [],
   stats: {
@@ -682,22 +715,136 @@ const deliverySlice = createSlice({
         return updatedOrder;
       });
     },
+    
+    // New action to sync coordinates from admin store
+    syncOrderCoordinatesFromAdmin: (state, action) => {
+      const { orderId, adminOrder } = action.payload;
+      
+      if (!orderId || !adminOrder) return;
+      
+      // Find and update order in active deliveries
+      const activeIndex = state.activeDeliveries.findIndex(order => order._id === orderId);
+      if (activeIndex !== -1) {
+        const currentOrder = state.activeDeliveries[activeIndex];
+        
+        // Create an updated order with synced coordinates
+        const updatedOrder = {
+          ...currentOrder,
+          // Update coordinate fields from admin order
+          pickupLatitude: adminOrder.pickupLatitude || currentOrder.pickupLatitude,
+          pickupLongitude: adminOrder.pickupLongitude || currentOrder.pickupLongitude,
+          deliveryLatitude: adminOrder.deliveryLatitude || currentOrder.deliveryLatitude,
+          deliveryLongitude: adminOrder.deliveryLongitude || currentOrder.deliveryLongitude,
+        };
+        
+        // Update GeoJSON coordinates if we have valid lat/lng
+        if (updatedOrder.pickupLatitude && updatedOrder.pickupLongitude && 
+            (updatedOrder.pickupLatitude !== 0 || updatedOrder.pickupLongitude !== 0)) {
+          updatedOrder.pickupLocation = {
+            type: 'Point',
+            coordinates: [updatedOrder.pickupLongitude, updatedOrder.pickupLatitude]
+          };
+        }
+        
+        if (updatedOrder.deliveryLatitude && updatedOrder.deliveryLongitude && 
+            (updatedOrder.deliveryLatitude !== 0 || updatedOrder.deliveryLongitude !== 0)) {
+          updatedOrder.deliveryLocation = {
+            type: 'Point',
+            coordinates: [updatedOrder.deliveryLongitude, updatedOrder.deliveryLatitude]
+          };
+        }
+        
+        state.activeDeliveries[activeIndex] = updatedOrder;
+        console.log(`Synced coordinates for order ${orderId} from admin store`);
+      }
+      
+      // Also update in nearbyOrders if present
+      const nearbyIndex = state.nearbyOrders.findIndex(order => order._id === orderId);
+      if (nearbyIndex !== -1) {
+        const currentOrder = state.nearbyOrders[nearbyIndex];
+        
+        // Update with admin coordinates
+        state.nearbyOrders[nearbyIndex] = {
+          ...currentOrder,
+          pickupLatitude: adminOrder.pickupLatitude || currentOrder.pickupLatitude,
+          pickupLongitude: adminOrder.pickupLongitude || currentOrder.pickupLongitude,
+          deliveryLatitude: adminOrder.deliveryLatitude || currentOrder.deliveryLatitude,
+          deliveryLongitude: adminOrder.deliveryLongitude || currentOrder.deliveryLongitude,
+          pickupLocation: adminOrder.pickupLatitude && adminOrder.pickupLongitude ? {
+            type: 'Point',
+            coordinates: [adminOrder.pickupLongitude, adminOrder.pickupLatitude]
+          } : currentOrder.pickupLocation,
+          deliveryLocation: adminOrder.deliveryLatitude && adminOrder.deliveryLongitude ? {
+            type: 'Point',
+            coordinates: [adminOrder.deliveryLongitude, adminOrder.deliveryLatitude]
+          } : currentOrder.deliveryLocation
+        };
+      }
+    },
     addToActiveDeliveries: (state, action) => {
       // First check if this order is already in active deliveries
       const orderExists = state.activeDeliveries.some(order => order._id === action.payload._id);
       if (!orderExists) {
-        console.log('Adding order to active deliveries:', action.payload._id);
+        CoordinateDebugger.log('Adding order to active deliveries', { orderId: action.payload._id });
         
-        // Normalize the order coordinates using our utility function
-        const normalizedOrder = normalizeOrderCoordinates(action.payload);
+        // Validate the incoming order
+        CoordinateDebugger.validateOrder(action.payload, 'incoming order for active deliveries');
+        
+        // Find matching nearby order to preserve coordinates
+        const nearbyOrder = state.nearbyOrders.find(order => order._id === action.payload._id);
+        
+        if (nearbyOrder) {
+          CoordinateDebugger.log('Found matching nearby order for coordinate preservation');
+          CoordinateDebugger.validateOrder(nearbyOrder, 'nearby order');
+        }
+        
+        // Normalize and validate the incoming order
+        let normalizedOrder = normalizeOrderCoordinates(action.payload);
+        const { hasValidPickup, hasValidDelivery } = validateOrderCoordinates(normalizedOrder);
+        
+        CoordinateDebugger.log('Normalized order validation', {
+          orderId: normalizedOrder._id,
+          hasValidPickup,
+          hasValidDelivery
+        });
+        
+        // If coordinates are invalid, try to get them from the nearby order
+        if (nearbyOrder) {
+          const nearbyValidation = validateOrderCoordinates(nearbyOrder);
+          
+          if (!hasValidPickup && nearbyValidation.hasValidPickup) {
+            CoordinateDebugger.log('Using pickup coordinates from nearby order');
+            normalizedOrder.pickupLocation = { ...nearbyOrder.pickupLocation };
+            normalizedOrder.pickupLatitude = nearbyOrder.pickupLatitude;
+            normalizedOrder.pickupLongitude = nearbyOrder.pickupLongitude;
+          }
+          
+          if (!hasValidDelivery && nearbyValidation.hasValidDelivery) {
+            CoordinateDebugger.log('Using delivery coordinates from nearby order');
+            normalizedOrder.deliveryLocation = { ...nearbyOrder.deliveryLocation };
+            normalizedOrder.deliveryLatitude = nearbyOrder.deliveryLatitude;
+            normalizedOrder.deliveryLongitude = nearbyOrder.deliveryLongitude;
+          }
+        }
         
         // Add the normalized order to active deliveries
         state.activeDeliveries.push(normalizedOrder);
         
-        console.log('Order added to active deliveries with coordinates:', {
+        // Log the final coordinates for debugging
+        const finalValidation = validateOrderCoordinates(normalizedOrder);
+        CoordinateDebugger.log('Order added to active deliveries - final state', {
+          orderId: normalizedOrder._id,
           pickup: normalizedOrder.pickupLocation?.coordinates,
-          delivery: normalizedOrder.deliveryLocation?.coordinates
+          delivery: normalizedOrder.deliveryLocation?.coordinates,
+          isPickupValid: finalValidation.hasValidPickup,
+          isDeliveryValid: finalValidation.hasValidDelivery,
+          totalActiveDeliveries: state.activeDeliveries.length
         });
+        
+        // Log the entire active deliveries state
+        CoordinateDebugger.logReduxState('activeDeliveries', state.activeDeliveries);
+      } else {
+        CoordinateDebugger.warn('Order already exists in active deliveries', { orderId: action.payload._id });
       }
     },
     removeFromActiveDeliveries: (state, action) => {
@@ -1015,55 +1162,35 @@ const deliverySlice = createSlice({
     builder.addCase(fetchNearbyOrders.fulfilled, (state, action) => {
       state.isNearbyOrdersLoading = false;
       
-      // Log the original orders for debugging
-      console.log('%c Nearby orders before normalization:', 'background: #ffeecc; color: #663300; font-weight: bold;', 
-        action.payload.orders?.map(order => ({
-          id: order._id,
-          pickup: order.pickupLocation?.coordinates,
-          delivery: order.deliveryLocation?.coordinates,
-          pickupLat: order.pickupLatitude,
-          pickupLng: order.pickupLongitude,
-          deliveryLat: order.deliveryLatitude,
-          deliveryLng: order.deliveryLongitude
-        }))
-      );
+      CoordinateDebugger.log('Nearby orders received from API', {
+        count: action.payload.orders?.length || 0
+      });
       
       // Apply the same normalization to nearby orders as we do for active deliveries
       const normalizedOrders = (action.payload.orders || []).map(order => {
-        // Do extra logging for each order
-        console.log(`%c Processing order ${order._id}:`, 'background: #e6f7ff; color: #0066cc; font-weight: bold;', {
-          before: {
-            pickupLocation: order.pickupLocation?.coordinates,
-            deliveryLocation: order.deliveryLocation?.coordinates,
-            pickupLat: order.pickupLatitude,
-            pickupLng: order.pickupLongitude,
-            deliveryLat: order.deliveryLatitude,
-            deliveryLng: order.deliveryLongitude
-          }
-        });
+        CoordinateDebugger.log(`Processing nearby order ${order._id}`);
+        CoordinateDebugger.validateOrder(order, 'nearby order before normalization');
         
         const normalized = normalizeOrderCoordinates(order);
         
-        console.log(`%c Result for order ${order._id}:`, 'background: #e6ffee; color: #006633; font-weight: bold;', {
-          after: {
-            pickupLocation: normalized.pickupLocation?.coordinates,
-            deliveryLocation: normalized.deliveryLocation?.coordinates
-          }
-        });
+        CoordinateDebugger.validateOrder(normalized, 'nearby order after normalization');
+        CoordinateDebugger.trackCoordinateFlow('normalize nearby order', order, normalized);
         
         return normalized;
       });
       
-      // Log the normalized orders for debugging
-      console.log('%c Nearby orders after normalization:', 'background: #ccffcc; color: #006600; font-weight: bold;', 
-        normalizedOrders.map(order => ({
-          id: order._id,
-          pickup: order.pickupLocation?.coordinates,
-          delivery: order.deliveryLocation?.coordinates
-        }))
-      );
+      CoordinateDebugger.log('All nearby orders processed', {
+        totalOrders: normalizedOrders.length,
+        validOrders: normalizedOrders.filter(order => {
+          const validation = validateOrderCoordinates(order);
+          return validation.hasValidPickup && validation.hasValidDelivery;
+        }).length
+      });
       
       state.nearbyOrders = normalizedOrders;
+      
+      // Log the final state
+      CoordinateDebugger.logReduxState('nearbyOrders', state.nearbyOrders);
     });
     builder.addCase(fetchNearbyOrders.rejected, (state, action) => {
       state.isNearbyOrdersLoading = false;
@@ -1081,178 +1208,185 @@ const deliverySlice = createSlice({
       
       // Add the accepted order to active deliveries
       if (action.payload && action.payload.order) {
-        // Debug: Log the incoming order data to verify its structure
-        console.log('Accept delivery order payload:', action.payload.order);
-        console.log('Order pickup location:', action.payload.order.pickupLocation);
-        console.log('Order delivery location:', action.payload.order.deliveryLocation);
-        console.log('Order restaurant location:', action.payload.order.restaurant?.location);
-        console.log('Order user location:', action.payload.order.userLocation);
-        console.log('Order accepted - checking for matching order in nearbyOrders:', action.payload.order._id);
+        const incomingOrder = action.payload.order;
         
-        // First try to find this order in nearbyOrders which should have proper coordinates
-        const matchingNearbyOrder = state.nearbyOrders.find(o => o._id === action.payload.order._id);
-        if (matchingNearbyOrder) {
-          console.log('Found matching order in nearbyOrders with coordinates:', {
-            pickupLocation: matchingNearbyOrder.pickupLocation?.coordinates,
-            deliveryLocation: matchingNearbyOrder.deliveryLocation?.coordinates
+        CoordinateDebugger.log('Accept delivery order received', {
+          orderId: incomingOrder._id,
+          incomingCoordinates: {
+            pickup: incomingOrder.pickupLocation?.coordinates,
+            delivery: incomingOrder.deliveryLocation?.coordinates
+          }
+        });
+        
+        // STEP 1: Find the original order with good coordinates
+        const matchingNearbyOrder = state.nearbyOrders.find(o => o._id === incomingOrder._id);
+        const matchingConfirmedOrder = state.confirmedOrders.find(o => o._id === incomingOrder._id);
+        const originalOrder = matchingNearbyOrder || matchingConfirmedOrder;
+        
+        if (originalOrder) {
+          CoordinateDebugger.log('Found original order with coordinates', {
+            orderId: originalOrder._id,
+            originalCoordinates: {
+              pickup: originalOrder.pickupLocation?.coordinates,
+              delivery: originalOrder.deliveryLocation?.coordinates
+            }
+          });
+        } else {
+          CoordinateDebugger.warn('No original order found for coordinate preservation');
+        }
+        
+        // STEP 2: Create enhanced order ensuring coordinates are preserved
+        let enhancedOrder;
+        
+        if (originalOrder) {
+          // Use the original order as the base to ensure coordinates are preserved
+          enhancedOrder = {
+            // Start with the original order that has valid coordinates
+            ...originalOrder,
+            
+            // Then overlay specific fields from the API response
+            _id: incomingOrder._id,
+            status: incomingOrder.status || 'accepted',
+            deliveryAgent: incomingOrder.deliveryAgent || originalOrder.deliveryAgent,
+            deliveryAgentId: incomingOrder.deliveryAgentId || originalOrder.deliveryAgentId,
+            estimatedDeliveryTime: incomingOrder.estimatedDeliveryTime || originalOrder.estimatedDeliveryTime,
+            statusHistory: incomingOrder.statusHistory || originalOrder.statusHistory || [],
+            
+            // Ensure pickup location coordinates are preserved from original
+            pickupLocation: originalOrder.pickupLocation || incomingOrder.pickupLocation,
+            pickupLatitude: originalOrder.pickupLatitude || incomingOrder.pickupLatitude,
+            pickupLongitude: originalOrder.pickupLongitude || incomingOrder.pickupLongitude,
+            
+            // Ensure delivery location coordinates are preserved from original
+            deliveryLocation: originalOrder.deliveryLocation || incomingOrder.deliveryLocation,
+            deliveryLatitude: originalOrder.deliveryLatitude || incomingOrder.deliveryLatitude,
+            deliveryLongitude: originalOrder.deliveryLongitude || incomingOrder.deliveryLongitude,
+            
+            // Preserve restaurant information
+            restaurant: originalOrder.restaurant || incomingOrder.restaurant,
+            restaurantLatitude: originalOrder.restaurantLatitude || incomingOrder.restaurantLatitude,
+            restaurantLongitude: originalOrder.restaurantLongitude || incomingOrder.restaurantLongitude,
+            
+            // Add delivery-specific fields
+            acceptedAt: new Date().toISOString(),
+            deliveryStatus: 'accepted',
+            agentLocation: state.currentLocation ? {
+              type: 'Point',
+              coordinates: [state.currentLocation.longitude, state.currentLocation.latitude]
+            } : null
+          };
+          
+          CoordinateDebugger.log('Enhanced order created from original', {
+            orderId: enhancedOrder._id,
+            preservedCoordinates: {
+              pickup: enhancedOrder.pickupLocation?.coordinates,
+              delivery: enhancedOrder.deliveryLocation?.coordinates
+            }
+          });
+        } else {
+          // No original order found, use incoming order but apply coordinate normalization
+          enhancedOrder = {
+            ...incomingOrder,
+            acceptedAt: new Date().toISOString(),
+            deliveryStatus: 'accepted',
+            agentLocation: state.currentLocation ? {
+              type: 'Point',
+              coordinates: [state.currentLocation.longitude, state.currentLocation.latitude]
+            } : null
+          };
+          
+          // Apply coordinate normalization
+          enhancedOrder = normalizeOrderCoordinates(enhancedOrder);
+          
+          CoordinateDebugger.warn('No original order found, normalized incoming order', {
+            orderId: enhancedOrder._id,
+            normalizedCoordinates: {
+              pickup: enhancedOrder.pickupLocation?.coordinates,
+              delivery: enhancedOrder.deliveryLocation?.coordinates
+            }
           });
         }
         
-        // Add order to active deliveries
-        // If we found a matching order in nearbyOrders, use it as the base to preserve coordinates
-        const order = matchingNearbyOrder || action.payload.order;
+        // STEP 3: Final coordinate validation and warning
+        const { hasValidPickup, hasValidDelivery } = validateOrderCoordinates(enhancedOrder);
         
-        // Make sure pickup location is properly set from restaurant location
-        let pickupLocation = order.pickupLocation;
-        
-        // If pickupLocation is missing but restaurant location exists, use that instead
-        if ((!pickupLocation || !pickupLocation.coordinates) && 
-            order.restaurant && order.restaurant.location) {
-          pickupLocation = {
-            type: 'Point',
-            coordinates: order.restaurant.location.coordinates ? 
-              [...order.restaurant.location.coordinates] : // Use restaurant location
-              [0, 0] // Placeholder until real coordinates are available
-          };
-          console.log('Created pickup location from restaurant:', pickupLocation);
+        if (!hasValidPickup || !hasValidDelivery) {
+          CoordinateDebugger.error('CRITICAL: Order still has invalid coordinates after all enhancement attempts!', {
+            orderId: enhancedOrder._id,
+            hasValidPickup,
+            hasValidDelivery,
+            pickup: enhancedOrder.pickupLocation?.coordinates,
+            delivery: enhancedOrder.deliveryLocation?.coordinates,
+            originalPickup: originalOrder?.pickupLocation?.coordinates,
+            originalDelivery: originalOrder?.deliveryLocation?.coordinates,
+            incomingPickup: incomingOrder.pickupLocation?.coordinates,
+            incomingDelivery: incomingOrder.deliveryLocation?.coordinates
+          });
+        } else {
+          CoordinateDebugger.success('Order has valid coordinates!', {
+            orderId: enhancedOrder._id,
+            pickup: enhancedOrder.pickupLocation?.coordinates,
+            delivery: enhancedOrder.deliveryLocation?.coordinates
+          });
         }
         
-        // Extract delivery location from user data if it exists
-        let deliveryLocation = order.deliveryLocation;
-        if ((!deliveryLocation || !deliveryLocation.coordinates || deliveryLocation.coordinates[0] === 0) && 
-             order.userLocation && order.userLocation.coordinates) {
-          deliveryLocation = {
-            type: 'Point',
-            coordinates: order.userLocation.coordinates
-          };
-          console.log('Created delivery location from userLocation:', deliveryLocation);
-        } else if ((!deliveryLocation || !deliveryLocation.coordinates || deliveryLocation.coordinates[0] === 0) && 
-                   order.user && order.user.location && order.user.location.coordinates) {
-          // Try to get from user object directly if available
-          deliveryLocation = {
-            type: 'Point',
-            coordinates: order.user.location.coordinates
-          };
-          console.log('Created delivery location from user object:', deliveryLocation);
-        }
-        
-        // Add current location for tracking
-        const enhancedOrder = {
-          ...order,
-          // Make sure we preserve original coordinates from order if they exist
-          pickupLatitude: order.pickupLatitude || (order.pickupLocation?.coordinates ? order.pickupLocation.coordinates[1] : 0),
-          pickupLongitude: order.pickupLongitude || (order.pickupLocation?.coordinates ? order.pickupLocation.coordinates[0] : 0),
-          deliveryLatitude: order.deliveryLatitude || (order.deliveryLocation?.coordinates ? order.deliveryLocation.coordinates[1] : 0),
-          deliveryLongitude: order.deliveryLongitude || (order.deliveryLocation?.coordinates ? order.deliveryLocation.coordinates[0] : 0),
-          // Ensure pickup location is properly set with valid coordinates
-          pickupLocation: {
-            type: 'Point',
-            coordinates: pickupLocation && pickupLocation.coordinates && 
-                         pickupLocation.coordinates.length === 2 && 
-                         (pickupLocation.coordinates[0] !== 0 || pickupLocation.coordinates[1] !== 0) ?
-              [...pickupLocation.coordinates] :
-              // Check direct lat/long values if available
-              order.pickupLatitude && order.pickupLongitude && 
-              (order.pickupLatitude !== 0 || order.pickupLongitude !== 0) ?
-                [order.pickupLongitude, order.pickupLatitude] :
-                // Fallback to restaurant coordinates
-                order.restaurant && order.restaurant.location && order.restaurant.location.coordinates ?
-                  [...order.restaurant.location.coordinates] :
-                  // Last resort fallback
-                  [0, 0]
-          },
-          // Ensure delivery location is properly set with valid coordinates
-          deliveryLocation: {
-            type: 'Point',
-            coordinates: deliveryLocation && deliveryLocation.coordinates && 
-                         deliveryLocation.coordinates.length === 2 && 
-                         (deliveryLocation.coordinates[0] !== 0 || deliveryLocation.coordinates[1] !== 0) ?
-              [...deliveryLocation.coordinates] :
-              // Check direct lat/long values if available
-              order.deliveryLatitude && order.deliveryLongitude && 
-              (order.deliveryLatitude !== 0 || order.deliveryLongitude !== 0) ?
-                [order.deliveryLongitude, order.deliveryLatitude] :
-                // Fallback to user location coordinates
-                order.userLocation && order.userLocation.coordinates ?
-                  [...order.userLocation.coordinates] :
-                  // Try user object location
-                  order.user && order.user.location && order.user.location.coordinates ?
-                    [...order.user.location.coordinates] :
-                    // Last resort fallback
-                    [0, 0]
-          },
-          // Add agent's current location
-          agentLocation: {
-            type: 'Point',
-            coordinates: state.currentLocation ? 
-              [state.currentLocation.longitude, state.currentLocation.latitude] : 
-              [0, 0]
-          },
-          acceptedAt: new Date().toISOString(),
-          estimatedPickupTime: null,
-          estimatedDeliveryTime: null,
-          deliveryStatus: 'accepted' // 'accepted', 'picked_up', 'on_way', 'delivered'
-        };
-        
-        // Calculate estimated times if we have coordinates
-        if (state.currentLocation && state.currentLocation.latitude && 
-            enhancedOrder.pickupLocation && enhancedOrder.pickupLocation.coordinates) {
-          
-          // Calculate distance to pickup
-          const pickupDistance = calculateDistance(
-            state.currentLocation.latitude,
-            state.currentLocation.longitude,
-            enhancedOrder.pickupLocation.coordinates[1],
-            enhancedOrder.pickupLocation.coordinates[0]
-          );
-          
-          // Estimate pickup time (assume 30 km/h average speed)
-          const pickupTimeMinutes = Math.round((pickupDistance / 30) * 60);
-          const pickupTime = new Date();
-          pickupTime.setMinutes(pickupTime.getMinutes() + pickupTimeMinutes);
-          enhancedOrder.estimatedPickupTime = pickupTime.toISOString();
-          
-          // Calculate distance and time from pickup to delivery if we have delivery coordinates
-          if (enhancedOrder.deliveryLocation && enhancedOrder.deliveryLocation.coordinates && 
-              enhancedOrder.deliveryLocation.coordinates[0] !== 0 && 
-              enhancedOrder.deliveryLocation.coordinates[1] !== 0) {
-            const deliveryDistance = calculateDistance(
+        // STEP 4: Calculate estimated times if coordinates are valid
+        if (hasValidPickup && state.currentLocation?.latitude && state.currentLocation?.longitude) {
+          try {
+            const pickupDistance = calculateDistance(
+              state.currentLocation.latitude,
+              state.currentLocation.longitude,
               enhancedOrder.pickupLocation.coordinates[1],
-              enhancedOrder.pickupLocation.coordinates[0],
-              enhancedOrder.deliveryLocation.coordinates[1],
-              enhancedOrder.deliveryLocation.coordinates[0]
+              enhancedOrder.pickupLocation.coordinates[0]
             );
             
-            // Estimate delivery time (add pickup time + delivery distance time)
-            const deliveryTimeMinutes = Math.round((deliveryDistance / 30) * 60);
-            const deliveryTime = new Date(pickupTime);
-            deliveryTime.setMinutes(deliveryTime.getMinutes() + deliveryTimeMinutes + 5); // Add 5 mins for pickup
-            enhancedOrder.estimatedDeliveryTime = deliveryTime.toISOString();
+            const pickupTimeMinutes = Math.round((pickupDistance / 30) * 60);
+            const pickupTime = new Date();
+            pickupTime.setMinutes(pickupTime.getMinutes() + pickupTimeMinutes);
+            enhancedOrder.estimatedPickupTime = pickupTime.toISOString();
+            
+            if (hasValidDelivery) {
+              const deliveryDistance = calculateDistance(
+                enhancedOrder.pickupLocation.coordinates[1],
+                enhancedOrder.pickupLocation.coordinates[0],
+                enhancedOrder.deliveryLocation.coordinates[1],
+                enhancedOrder.deliveryLocation.coordinates[0]
+              );
+              
+              const deliveryTimeMinutes = Math.round((deliveryDistance / 30) * 60);
+              const deliveryTime = new Date(pickupTime);
+              deliveryTime.setMinutes(deliveryTime.getMinutes() + deliveryTimeMinutes + 5);
+              enhancedOrder.estimatedDeliveryTime = deliveryTime.toISOString();
+            }
+          } catch (error) {
+            CoordinateDebugger.error('Error calculating travel times', error);
           }
         }
         
-        // Find and remove from confirmedOrders if it exists there
-        state.confirmedOrders = state.confirmedOrders.filter(co => co._id !== order._id);
+        // STEP 5: Remove from source arrays and add to active deliveries
+        state.nearbyOrders = state.nearbyOrders.filter(order => order._id !== incomingOrder._id);
+        state.confirmedOrders = state.confirmedOrders.filter(order => order._id !== incomingOrder._id);
         
-        // Verify coordinates before adding to active deliveries
-        console.log('%c Enhanced order coordinates verification:', 'background: #fff3cd; color: #856404; font-weight: bold;', {
-          order_id: enhancedOrder._id,
-          pickupLocation: enhancedOrder.pickupLocation?.coordinates,
-          deliveryLocation: enhancedOrder.deliveryLocation?.coordinates,
-          pickupLatLng: [enhancedOrder.pickupLatitude, enhancedOrder.pickupLongitude],
-          deliveryLatLng: [enhancedOrder.deliveryLatitude, enhancedOrder.deliveryLongitude]
-        });
-        
-        // Add to active deliveries
-        const deliveryExists = state.activeDeliveries.some(del => del._id === order._id);
-        if (!deliveryExists) {
-          state.activeDeliveries.push(enhancedOrder);
-          console.log(`%c Successfully added order ${enhancedOrder._id} to active deliveries with coordinates:`, 
-            'background: #d4edda; color: #155724; font-weight: bold;', {
-              pickup: enhancedOrder.pickupLocation?.coordinates,
-              delivery: enhancedOrder.deliveryLocation?.coordinates
-            });
+        // Add to active deliveries (prevent duplicates)
+        const existingIndex = state.activeDeliveries.findIndex(del => del._id === enhancedOrder._id);
+        if (existingIndex >= 0) {
+          // Replace existing
+          state.activeDeliveries[existingIndex] = { ...enhancedOrder };
+          CoordinateDebugger.log('Replaced existing order in active deliveries');
+        } else {
+          // Add new
+          state.activeDeliveries.push({ ...enhancedOrder });
+          CoordinateDebugger.log('Added new order to active deliveries');
         }
+        
+        CoordinateDebugger.log('Order acceptance completed', {
+          orderId: enhancedOrder._id,
+          activeDeliveriesCount: state.activeDeliveries.length,
+          finalCoordinates: {
+            pickup: enhancedOrder.pickupLocation?.coordinates,
+            delivery: enhancedOrder.deliveryLocation?.coordinates
+          }
+        });
       }
     });
     builder.addCase(acceptDeliveryOrder.rejected, (state, action) => {
@@ -1474,7 +1608,8 @@ export const {
   refreshConfirmedOrders,
   addToActiveDeliveries,
   removeFromActiveDeliveries,
-  updateActiveDeliveryStatus
+  updateActiveDeliveryStatus,
+  syncOrderCoordinatesFromAdmin
 } = deliverySlice.actions;
 
 export default deliverySlice.reducer;

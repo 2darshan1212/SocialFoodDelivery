@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, Outlet, Link, useLocation } from "react-router-dom";
 import { checkAdminAccess } from "../../utils/adminUtils";
 import { setAuthUser } from "../../redux/authSlice";
-import axios from "axios";
+import axiosInstance from "../../utils/axiosInstance";
 import {
   Box,
   Drawer,
@@ -22,15 +22,11 @@ import {
   MenuItem,
   Badge,
   Alert,
-  Collapse,
   CssBaseline,
   useMediaQuery,
   useTheme,
   CircularProgress,
   Button,
-  Paper,
-  BottomNavigation,
-  BottomNavigationAction,
 } from "@mui/material";
 import {
   Dashboard as DashboardIcon,
@@ -38,16 +34,12 @@ import {
   CategoryOutlined as CategoryIcon,
   People as PeopleIcon,
   Settings as SettingsIcon,
-  MenuOpen as MenuOpenIcon,
   Menu as MenuIcon,
   Notifications as NotificationsIcon,
-  ExitToApp as ExitIcon,
   Home as HomeIcon,
   ShoppingCart as ShoppingCartIcon,
   BugReport as BugReportIcon,
   LocalShipping as DeliveryIcon,
-  Add as AddIcon,
-  Message as MessageIcon,
 } from "@mui/icons-material";
 
 const drawerWidth = 240;
@@ -81,14 +73,31 @@ const AdminLayout = () => {
 
         console.log("Current user state:", user);
 
-        // Double-check with backend if user is admin
-        if (!user.isAdmin) {
-          const userData = await axios.get(
-            "https://socialfooddelivery-2.onrender.com/api/v1/user/me",
-            {
-              withCredentials: true,
+        // If user already has isAdmin flag, allow access but still run diagnostics
+        if (user.isAdmin) {
+          console.log("User has admin flag, allowing access");
+          
+          // Run diagnostics in background but don't block access
+          try {
+            const result = await checkAdminAccess();
+            setAdminCheckResult(result);
+            console.log("Admin access check result:", result);
+            
+            if (!result.success) {
+              console.warn("Admin endpoints may have issues:", result.message);
+              // Don't block access, just log the warning
             }
-          );
+          } catch (err) {
+            console.warn("Admin diagnostics failed but continuing:", err);
+          }
+          
+          setIsLoading(false);
+          return;
+        }
+
+        // If user doesn't have isAdmin flag, check with backend
+        try {
+          const userData = await axiosInstance.get("/user/me");
 
           console.log("User data from backend:", userData.data);
 
@@ -100,25 +109,19 @@ const AdminLayout = () => {
                 isAdmin: true,
               })
             );
+            console.log("Updated user with admin status from backend");
           } else {
             setError("User is not an admin");
             navigate("/");
             return;
           }
+        } catch (err) {
+          console.error("Failed to verify admin status with backend:", err);
+          setError("Unable to verify admin status");
+          navigate("/");
+          return;
         }
 
-        // Run additional diagnostics
-        const result = await checkAdminAccess();
-        setAdminCheckResult(result);
-
-        console.log("Admin access check result:", result);
-
-        if (!result.success) {
-          setError(result.message);
-          if (!result.isAdmin) {
-            navigate("/");
-          }
-        }
       } catch (err) {
         console.error("Admin verification error:", err);
         setError("Error verifying admin status");
@@ -163,23 +166,11 @@ const AdminLayout = () => {
       setMobileOpen(false);
     }
   };
-  
-  // For bottom navigation
-  const [mobileNavValue, setMobileNavValue] = useState(0);
 
   // Check if a route is active
   const isRouteActive = (path) => {
     return location.pathname === path;
   };
-
-  // Navigation items
-  const navItems = [
-    { text: "Dashboard", icon: <DashboardIcon />, path: "/admin/dashboard" },
-    { text: "Orders", icon: <OrdersIcon />, path: "/admin/orders" },
-    { text: "Categories", icon: <CategoryIcon />, path: "/admin/categories" },
-    { text: "Users", icon: <PeopleIcon />, path: "/admin/users" },
-    { text: "Settings", icon: <SettingsIcon />, path: "/admin/settings" },
-  ];
 
   // Loading state
   if (isLoading) {
@@ -190,6 +181,7 @@ const AdminLayout = () => {
           justifyContent: "center",
           alignItems: "center",
           height: "100vh",
+          px: 2,
         }}
       >
         <CircularProgress />
@@ -209,9 +201,10 @@ const AdminLayout = () => {
           justifyContent: "center",
           alignItems: "center",
           height: "100vh",
+          px: 2,
         }}
       >
-        <Alert severity="error" sx={{ maxWidth: 500 }}>
+        <Alert severity="error" sx={{ maxWidth: 500, width: "100%" }}>
           <Typography variant="h6">Admin Access Error</Typography>
           <Typography variant="body1">{error}</Typography>
           <Box sx={{ mt: 2 }}>
@@ -242,9 +235,10 @@ const AdminLayout = () => {
           justifyContent: "center",
           alignItems: "center",
           height: "100vh",
+          px: 2,
         }}
       >
-        <Alert severity="error">
+        <Alert severity="error" sx={{ width: "100%", maxWidth: 500 }}>
           <Typography variant="h6">Access Denied</Typography>
           <Typography variant="body1">
             You do not have admin privileges.
@@ -388,8 +382,7 @@ const AdminLayout = () => {
           </IconButton>
 
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            {navItems.find((item) => isRouteActive(item.path))?.text ||
-              "Admin Panel"}
+            Admin Panel
           </Typography>
 
           {/* Notifications */}
@@ -539,47 +532,11 @@ const AdminLayout = () => {
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           minHeight: "100vh",
           bgcolor: "#f5f5f5",
-          pb: { xs: 7, sm: 0 } // Add padding at bottom for mobile navigation
         }}
       >
         <Toolbar /> {/* Spacer for fixed app bar */}
         <Outlet /> {/* Render nested routes */}
       </Box>
-      
-      {/* Mobile Bottom Navigation */}
-      {isMobile && (
-        <Paper 
-          sx={{ 
-            position: 'fixed', 
-            bottom: 0, 
-            left: 0, 
-            right: 0, 
-            zIndex: 1100,
-            borderRadius: 0,
-            boxShadow: 3
-          }} 
-          elevation={3}
-        >
-          <BottomNavigation 
-            value={mobileNavValue} 
-            onChange={handleMobileNavChange}
-            showLabels
-          >
-            <BottomNavigationAction label="Dashboard" icon={<DashboardIcon />} />
-            <BottomNavigationAction 
-              label="Alerts" 
-              icon={
-                <Badge badgeContent={4} color="error">
-                  <NotificationsIcon />
-                </Badge>
-              } 
-            />
-            <BottomNavigationAction label="Create" icon={<AddIcon />} />
-            <BottomNavigationAction label="Messages" icon={<MessageIcon />} />
-            <BottomNavigationAction label="Menu" icon={<MenuIcon />} />
-          </BottomNavigation>
-        </Paper>
-      )}
     </Box>
   );
 };

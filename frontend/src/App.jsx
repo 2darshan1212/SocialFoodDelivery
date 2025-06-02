@@ -202,6 +202,10 @@ const browserRouter = createBrowserRouter([
             element: <AdminLayout />,
             children: [
               {
+                index: true,
+                element: <Navigate to="/admin/dashboard" replace />
+              },
+              {
                 path: "dashboard",
                 element: <AdminDashboard />
               },

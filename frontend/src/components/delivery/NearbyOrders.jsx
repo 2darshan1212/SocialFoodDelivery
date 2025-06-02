@@ -77,6 +77,8 @@ const NearbyOrders = () => {
     isNearbyOrdersError,
     nearbyOrdersError,
     isActionPending,
+    isAcceptingOrder,
+    acceptOrderError,
     isRejecting
   } = useSelector((state) => state.delivery);
   
@@ -339,19 +341,37 @@ const NearbyOrders = () => {
   }, [loadNearbyOrders, isRefreshing]);
   
   const handleAcceptOrder = useCallback((orderId) => {
+    if (!orderId) {
+      toast.error("Invalid order ID");
+      return;
+    }
+    
+    if (isAcceptingOrder || acceptingOrderId) {
+      toast.info("Please wait, already processing an order");
+      return;
+    }
+    
+    console.log(`Accepting order: ${orderId}`);
     setAcceptingOrderId(orderId);
     
     dispatch(acceptDeliveryOrder(orderId))
       .unwrap()
-      .then(() => {
+      .then((result) => {
+        console.log("Order accepted successfully:", result);
         toast.success("Order accepted successfully!");
-        navigate("/deliver/my-deliveries");
+        // Small delay before navigation to ensure state updates
+        setTimeout(() => {
+          navigate("/deliver/my-deliveries");
+        }, 500);
       })
       .catch((error) => {
+        console.error("Failed to accept order:", error);
         toast.error(error || "Failed to accept order");
+      })
+      .finally(() => {
         setAcceptingOrderId(null);
       });
-  }, [dispatch, navigate]);
+  }, [dispatch, navigate, isAcceptingOrder, acceptingOrderId]);
   
   const handleRejectOrder = useCallback((orderId) => {
     // Make sure we have a valid orderId
@@ -735,11 +755,11 @@ const NearbyOrders = () => {
                         <>
                           <button
                             onClick={() => handleAcceptOrder(order._id)}
-                            disabled={isActionPending || acceptingOrderId === order._id || rejectingOrderId === order._id}
+                            disabled={isAcceptingOrder || acceptingOrderId === order._id || rejectingOrderId === order._id}
                             className={`flex-1 mr-2 flex items-center justify-center px-4 py-2 rounded-md text-white
-                              ${isActionPending || acceptingOrderId === order._id || rejectingOrderId === order._id
-                                ? 'bg-gray-400'
-                                : 'bg-green-600 hover:bg-green-700'
+                              ${isAcceptingOrder || acceptingOrderId === order._id || rejectingOrderId === order._id
+                                ? 'bg-gray-400 cursor-not-allowed'
+                                : 'bg-green-600 hover:bg-green-700 cursor-pointer'
                               }`}
                           >
                             {acceptingOrderId === order._id ? (
@@ -757,11 +777,11 @@ const NearbyOrders = () => {
                           
                           <button
                             onClick={() => handleRejectOrder(order._id)}
-                            disabled={isActionPending || acceptingOrderId === order._id || rejectingOrderId === order._id}
+                            disabled={isAcceptingOrder || acceptingOrderId === order._id || rejectingOrderId === order._id || isRejecting}
                             className={`flex-1 ml-2 flex items-center justify-center px-4 py-2 rounded-md text-white
-                              ${isActionPending || acceptingOrderId === order._id || rejectingOrderId === order._id
-                                ? 'bg-gray-400'
-                                : 'bg-red-600 hover:bg-red-700'
+                              ${isAcceptingOrder || acceptingOrderId === order._id || rejectingOrderId === order._id || isRejecting
+                                ? 'bg-gray-400 cursor-not-allowed'
+                                : 'bg-red-600 hover:bg-red-700 cursor-pointer'
                               }`}
                           >
                             {rejectingOrderId === order._id ? (

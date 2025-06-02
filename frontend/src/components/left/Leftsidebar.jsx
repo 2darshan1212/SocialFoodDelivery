@@ -71,7 +71,12 @@ const Leftsidebar = () => {
     if (textType == "Post") {
       createPostHandler();
     } else if (textType == "Profile") {
-      navigate(`/profile/${user._id}`);
+      if (user && user._id) {
+        navigate(`/profile/${user._id}`);
+      } else {
+        toast.error("User profile not available. Please refresh the page.");
+        console.error("User data missing:", user);
+      }
     } else if (textType == "Home") {
       navigate("/");
       setShowFavorites(false);
@@ -162,6 +167,7 @@ const Leftsidebar = () => {
           icon={<Settings />}
           label="Admin"
           sidebarHandler={sidebarHandler}
+          badgeCount="★"
         />
       )}
       

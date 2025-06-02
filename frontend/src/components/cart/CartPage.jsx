@@ -64,7 +64,7 @@ import { resetPaymentStatus } from "../../redux/walletSlice";
 import store from "../../redux/store";
 import { updateOrderStatus } from "../../services/orderService";
 import axios from "axios";
-import { fetchConfirmedOrders, addOrderToConfirmed } from "../../redux/confirmedOrdersSlice";
+import { fetchConfirmedOrders } from "../../redux/deliverySlice";
 
 const CartPage = () => {
   const { 
@@ -514,23 +514,23 @@ const CartPage = () => {
                 
                 // Directly add this order to the confirmed orders in Redux
                 // This ensures immediate availability in the delivery dashboard
-                dispatch(addOrderToConfirmed(response.order._id))
+                dispatch(fetchConfirmedOrders())
                   .unwrap()
                   .then(result => {
-                    console.log('Successfully added order to confirmed orders:', result);
+                    console.log('Successfully refreshed confirmed orders:', result);
                     // Also force a refresh to ensure we have all confirmed orders
-                    dispatch(fetchConfirmedOrders());
+                    dispatch(fetchOrders());
                   })
                   .catch(err => {
-                    console.error('Failed to add order to confirmed orders, falling back to refresh:', err);
+                    console.error('Failed to refresh confirmed orders, falling back to fetch orders:', err);
                     // If direct addition fails, fall back to just refreshing the list
-                    dispatch(fetchConfirmedOrders());
+                    dispatch(fetchOrders());
                   });
               })
               .catch(err => {
                 console.error('Error confirming order:', err);
                 // Even if status update fails, try to add to confirmed orders
-                dispatch(addOrderToConfirmed(response.order._id));
+                dispatch(fetchConfirmedOrders());
               });
             
             // Also update the Redux state directly to ensure immediate UI updates
@@ -546,11 +546,11 @@ const CartPage = () => {
             
             // Dispatch multiple refreshes of confirmed orders to ensure they appear
             // First immediate refresh
-            dispatch(fetchConfirmedOrders());
+            dispatch(fetchOrders());
             
             // Then staggered refreshes to ensure backend has processed the order
-            setTimeout(() => dispatch(fetchConfirmedOrders()), 3000);
-            setTimeout(() => dispatch(fetchConfirmedOrders()), 6000);
+            setTimeout(() => dispatch(fetchOrders()), 3000);
+            setTimeout(() => dispatch(fetchOrders()), 6000);
           }
           
           // Refresh orders list to ensure the new order appears in the history
@@ -558,7 +558,7 @@ const CartPage = () => {
             dispatch(fetchOrders());
             
             // Also refresh confirmed orders in the delivery system
-            dispatch(fetchConfirmedOrders());
+            dispatch(fetchOrders());
             
             // Update localStorage to trigger refresh in other open tabs
             localStorage.setItem('confirmedOrdersUpdated', Date.now().toString());
@@ -572,7 +572,7 @@ const CartPage = () => {
           // Set up polling for real-time updates - fetch confirmed orders every 10 seconds
           const pollingInterval = setInterval(() => {
             if (document.visibilityState === 'visible') {
-              dispatch(fetchConfirmedOrders());
+              dispatch(fetchOrders());
             }
           }, 10000);
           
@@ -1387,26 +1387,17 @@ const CartPage = () => {
         }));
         
         // Update confirmed orders in confirmed orders slice
-        dispatch(fetchConfirmedOrders()).unwrap()
-          .then(confirmedOrders => {
-            console.log('Confirmed orders refreshed successfully:', confirmedOrders);
-            
-            // Broadcast the update to other components/tabs
-            const event = new CustomEvent('order-confirmed', {
-              detail: { orderId, status: 'confirmed' }
-            });
-            window.dispatchEvent(event);
-            
-            // Also store in localStorage to notify other tabs
-            localStorage.setItem('lastConfirmedOrder', JSON.stringify({
-              orderId,
-              timestamp: Date.now()
-            }));
+        dispatch(fetchConfirmedOrders())
+          .unwrap()
+          .then(result => {
+            console.log('Successfully refreshed confirmed orders:', result);
+            // Also force a refresh to ensure we have all confirmed orders
+            dispatch(fetchOrders());
           })
           .catch(err => {
-            console.error('Failed to refresh confirmed orders:', err);
-            // Try again after a short delay
-            setTimeout(() => dispatch(fetchConfirmedOrders()), 2000);
+            console.error('Failed to refresh confirmed orders, falling back to fetch orders:', err);
+            // If direct addition fails, fall back to just refreshing the list
+            dispatch(fetchOrders());
           });
         
         // Refresh all orders to ensure we have the latest data
@@ -1423,8 +1414,8 @@ const CartPage = () => {
     }
     
     // Regardless of success/failure, schedule additional refreshes to ensure data consistency
-    setTimeout(() => dispatch(fetchConfirmedOrders()), 5000);
-    setTimeout(() => dispatch(fetchConfirmedOrders()), 10000);
+    setTimeout(() => dispatch(fetchOrders()), 5000);
+    setTimeout(() => dispatch(fetchOrders()), 10000);
   };
 
   // Filter orders to ensure they belong to current user
