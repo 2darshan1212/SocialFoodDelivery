@@ -21,6 +21,7 @@ import rtnSlice from "./rtnSlice"
 import adminSlice from "./adminSlice";
 import deliverySlice from "./deliverySlice";
 import walletSlice from './walletSlice';
+import pickupSlice from './pickupSlice';
 import { createLogger } from 'redux-logger';
 import coordinatePreservationMiddleware from './coordinatePreservationMiddleware';
 
@@ -37,6 +38,14 @@ const persistConfig = {
   storage,
   version: 1,
   blacklist: ['socket', 'cart', 'delivery'], // Don't persist socket, cart, delivery in root
+};
+
+// Config for user slice - persist followings and userStats
+const userPersistConfig = {
+  key: 'user',
+  storage,
+  whitelist: ['followings', 'userStats'], // Only persist important user data
+  blacklist: ['loading', 'error', 'message'], // Don't persist transient states
 };
 
 // Separate config for cart slice
@@ -70,7 +79,7 @@ const rootReducer = combineReducers({
   auth: authSlice,
   post: postSlice,
   category: categorySlice,
-  user: userSlice,
+  user: persistReducer(userPersistConfig, userSlice), // Persist user slice
   cart: persistReducer(cartPersistConfig, cartSlice),
   socket: socketSlice,
   chat: persistReducer(chatPersistConfig, chatSlice),
@@ -78,6 +87,7 @@ const rootReducer = combineReducers({
   admin: adminSlice,
   delivery: persistReducer(deliveryPersistConfig, deliverySlice),
   wallet: persistReducer(walletPersistConfig, walletSlice),
+  pickup: pickupSlice,
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
@@ -97,7 +107,7 @@ const store = configureStore({
           REGISTER,
         ],
       },
-    }).concat(logger, coordinatePreservationMiddleware),
+    }).concat(coordinatePreservationMiddleware), // Temporarily disabled logger
   devTools: process.env.NODE_ENV !== 'production',
 });
 

@@ -54,7 +54,10 @@ import {
   resetOrderStatusAction,
   fetchOrders,
   syncOrderStatus,
-  setDeliveryPoint
+  setDeliveryPoint,
+  setCurrentPickupOrder,
+  clearPickupOrder,
+  setShowPickupScreen
 } from "../../redux/cartSlice";
 import { Delete, Favorite, ShoppingCart, LocalShipping, Payment, Refresh, Check, History, AccessTime, KeyboardArrowRight } from "@mui/icons-material";
 import { toast } from "react-toastify";
@@ -65,6 +68,7 @@ import store from "../../redux/store";
 import { updateOrderStatus } from "../../services/orderService";
 import axios from "axios";
 import { fetchConfirmedOrders } from "../../redux/deliverySlice";
+import PickupSuccessScreen from "./PickupSuccessScreen";
 
 const CartPage = () => {
   const { 
@@ -84,7 +88,9 @@ const CartPage = () => {
     orderStatus = "idle",
     orderError = null,
     stockErrors = {},
-    orders = []
+    orders = [],
+    showPickupScreen = false,
+    currentPickupOrder = null
   } = useSelector((store) => store.cart || {});
   const { user } = useSelector((store) => store.auth);
   const dispatch = useDispatch();
@@ -133,7 +139,8 @@ const CartPage = () => {
     }
 
     if (activeStep === 1) {
-      if (!checkout.deliveryAddress) {
+      // For pickup orders, delivery address is optional (can be pickup location)
+      if (checkout.deliveryMethod !== 'pickup' && !checkout.deliveryAddress) {
         toast.error("Please enter a delivery address");
         return;
       }
@@ -271,7 +278,7 @@ const CartPage = () => {
     }
 
     // Additional validation
-    if (!checkout.deliveryAddress) {
+    if (checkout.deliveryMethod !== 'pickup' && !checkout.deliveryAddress) {
       toast.error("Please enter a delivery address");
       setActiveStep(1); // Go back to delivery step
       dispatch({ type: 'cart/placeOrder/rejected', payload: { message: "Missing delivery address" } });
@@ -286,105 +293,28 @@ const CartPage = () => {
     }
     
     // Show loading state during processing
-    toast.info("Getting your location for delivery...");
+    if (checkout.deliveryMethod === 'pickup') {
+      toast.info("Processing your pickup order...");
+    } else {
+      toast.info("Getting your location for delivery...");
+    }
     dispatch({ type: 'cart/placeOrder/pending' });
     
-    // Get and store the user's current location for delivery
-    await getUserLocationForDelivery();
+    // Get and store the user's current location for delivery (skip for pickup)
+    if (checkout.deliveryMethod !== 'pickup') {
+      await getUserLocationForDelivery();
+    }
     
     try {
-      // Get pickup and delivery points from Redux
-      const { pickupPoint, deliveryPoint } = store.getState().cart;
-      console.log("Redux state - pickup point:", pickupPoint, "delivery point:", deliveryPoint);
-      
-      // For debugging - log cart items structure
-      console.log("Cart items for debugging:", JSON.stringify(cartItems.slice(0, 1)));
-      
-      // PICKUP COORDINATES: First try to get from Redux, then from the cart item
-      let pickupCoordinates = pickupPoint;
-      
-      // If no pickup point in Redux, try to get from the first item's seller
-      if (!validateCoordinates(pickupCoordinates) && cartItems.length > 0) {
-        // Try to extract seller coordinates from item
-        if (cartItems[0].sellerLocation?.coordinates) {
-          pickupCoordinates = cartItems[0].sellerLocation.coordinates;
-          console.log("Using seller coordinates from item:", pickupCoordinates);
-        } else if (cartItems[0].location?.coordinates) {
-          pickupCoordinates = cartItems[0].location.coordinates;
-          console.log("Using item location coordinates:", pickupCoordinates);
-        } else if (cartItems[0].sellerId && cartItems[0].sellerCoordinates) {
-          pickupCoordinates = cartItems[0].sellerCoordinates;
-          console.log("Using seller coordinates from item property:", pickupCoordinates);
-        }
-      }
-      
-      // If still no valid pickup point, get from food author's location or geocode
-      if (!validateCoordinates(pickupCoordinates) && cartItems.length > 0) {
-        if (cartItems[0].author && typeof cartItems[0].author === 'string') {
-          try {
-            // Try to fetch the author's location
-            console.log("Fetching location for author ID:", cartItems[0].author);
-            const response = await fetch(`/api/v1/users/${cartItems[0].author}/location`);
-            if (response.ok) {
-              const data = await response.json();
-              if (data.location?.coordinates) {
-                pickupCoordinates = data.location.coordinates;
-                console.log("Got author coordinates from API:", pickupCoordinates);
-              }
-            }
-          } catch (error) {
-            console.error("Error fetching author location:", error);
-          }
-        }
-      }
-      
-      // If we still don't have pickup coordinates, try geocoding
-      if (!validateCoordinates(pickupCoordinates)) {
-        // Try to get a location to geocode
-        let locationToGeocode = null;
-        
-        if (cartItems[0]?.sellerAddress) {
-          locationToGeocode = cartItems[0].sellerAddress;
-        } else if (cartItems[0]?.address) {
-          locationToGeocode = cartItems[0].address;
-        } else if (cartItems[0]?.city) {
-          locationToGeocode = cartItems[0].city;
-        }
-        
-        if (locationToGeocode) {
-          console.log("Geocoding location:", locationToGeocode);
-          pickupCoordinates = await geocodeAddress(locationToGeocode);
-        }
-      }
-      
-      // GUARANTEED FALLBACK: If all else fails, use hardcoded coordinates or offset from delivery
-      if (!validateCoordinates(pickupCoordinates)) {
-        if (validateCoordinates(deliveryPoint)) {
-          // Create pickup point as offset from delivery point
-          const [deliveryLong, deliveryLat] = deliveryPoint;
-          pickupCoordinates = [deliveryLong - 0.015, deliveryLat - 0.01];
-          console.log("Created pickup coordinates as offset from delivery point:", pickupCoordinates);
-        } else {
-          // Use Mumbai coordinates as absolute fallback
-          pickupCoordinates = [72.8777, 19.0760];
-          console.log("Using Mumbai fallback coordinates for pickup:", pickupCoordinates);
-        }
-      }
-      
-      // DELIVERY COORDINATES: Use from Redux (set earlier by getUserLocationForDelivery)
-      let deliveryCoordinates = deliveryPoint;
-      
-      // If no delivery point in Redux, try to get from browser geolocation again
-      if (!validateCoordinates(deliveryCoordinates)) {
-        console.log("No delivery coordinates in Redux, trying browser geolocation");
-        
-        // Try to get current position
-        deliveryCoordinates = await new Promise((resolve) => {
+      // Get current user location first
+      let currentUserLocation = null;
+      try {
+        currentUserLocation = await new Promise((resolve) => {
           if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
               (position) => {
                 const coords = [position.coords.longitude, position.coords.latitude];
-                console.log("Got browser geolocation:", coords);
+                console.log("Got current user location:", coords);
                 resolve(coords);
               },
               (error) => {
@@ -398,214 +328,263 @@ const CartPage = () => {
             resolve(null);
           }
         });
+      } catch (error) {
+        console.error("Error getting current location:", error);
+        currentUserLocation = null;
       }
-      
-      // If still no delivery coordinates, try geocoding the delivery address
-      if (!validateCoordinates(deliveryCoordinates) && checkout.deliveryAddress) {
-        console.log("Geocoding delivery address:", checkout.deliveryAddress);
-        deliveryCoordinates = await geocodeAddress(checkout.deliveryAddress);
-      }
-      
-      // GUARANTEED FALLBACK: If all else fails, create delivery coordinates
-      if (!validateCoordinates(deliveryCoordinates)) {
-        if (validateCoordinates(pickupCoordinates)) {
-          // Create delivery point as offset from pickup
-          const [pickupLong, pickupLat] = pickupCoordinates;
-          deliveryCoordinates = [pickupLong + 0.02, pickupLat + 0.01];
-          console.log("Created delivery coordinates as offset from pickup:", deliveryCoordinates);
+
+      // Get seller/food poster location from cart items
+      let sellerLocation = null;
+      if (cartItems.length > 0) {
+        const firstItem = cartItems[0];
+        
+        // Try to get seller ID from various possible fields
+        const sellerId = firstItem.sellerId || firstItem.userId || firstItem.author || firstItem.authorId;
+        
+        if (sellerId) {
+          console.log("Fetching seller location for ID:", sellerId);
+          
+          // Get authentication token
+          const token = localStorage.getItem('token');
+          if (!token) {
+            console.error('No auth token available for location request');
+            sellerLocation = [72.8777, 19.0760]; // Mumbai fallback
+          } else {
+            const headers = {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            };
+            
+            try {
+              // Try multiple API endpoints to get seller location
+              let sellerData = null;
+              
+              // First try: user location endpoint
+              try {
+                const response = await fetch(`/api/v1/user/${sellerId}/location`, { headers });
+                if (response.ok) {
+                  const userData = await response.json();
+                  if (userData.success && userData.location && userData.location.coordinates) {
+                    sellerData = userData;
+                    console.log("Got seller data from user location endpoint:", sellerData.location.coordinates);
+                  }
+                }
+              } catch (profileError) {
+                console.log("User location endpoint failed, trying alternatives");
+              }
+              
+              // Second try: post author location endpoint if we have a post ID
+              if (!sellerData && (firstItem._id || firstItem.productId)) {
+                try {
+                  const postId = firstItem._id || firstItem.productId;
+                  const response = await fetch(`/api/v1/user/post/${postId}/author-location`, { headers });
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.location && data.location.coordinates) {
+                      sellerData = data;
+                      console.log("Got seller data from post author endpoint:", sellerData.location.coordinates);
+                    }
+                  }
+                } catch (postError) {
+                  console.log("Post author endpoint also failed");
+                }
+              }
+              
+              if (sellerData && sellerData.location && sellerData.location.coordinates) {
+                sellerLocation = sellerData.location.coordinates;
+                console.log("Successfully got seller location:", sellerLocation);
+              } else {
+                console.log("No seller location found, will use fallback");
+              }
+              
+            } catch (error) {
+              console.error("Error fetching seller location:", error);
+            }
+          }
         } else {
-          // Use Mumbai with offset as absolute fallback
-          deliveryCoordinates = [72.8677, 19.0860];
-          console.log("Using Mumbai fallback coordinates for delivery:", deliveryCoordinates);
+          console.log("No seller ID found in cart item");
         }
       }
-      
-      // Format coordinates properly and ensure they are numbers
-      if (pickupCoordinates) {
-        pickupCoordinates = pickupCoordinates.map(coord => parseFloat(coord));
-      }
-      
-      if (deliveryCoordinates) {
-        deliveryCoordinates = deliveryCoordinates.map(coord => parseFloat(coord));
-      }
-      
-      // Store the final coordinates in variables accessible outside the try-catch block
-      let finalPickupCoordinates = pickupCoordinates;
-      let finalDeliveryCoordinates = deliveryCoordinates;
-      
-      // Store final coordinates in Redux for future reference
-      if (validateCoordinates(pickupCoordinates)) {
-        dispatch({ type: 'cart/setPickupPoint', payload: pickupCoordinates });
-      }
-      
-      if (validateCoordinates(deliveryCoordinates)) {
-        dispatch({ type: 'cart/setDeliveryPoint', payload: deliveryCoordinates });
-      }
-    } catch (error) {
-      console.error("Error processing location data:", error);
-      toast.error("Error processing location data. Using fallback locations.");
-      
-      // Set fallback coordinates if there was an error
-      const finalPickupCoordinates = [72.8777, 19.0760]; // Mumbai
-      const finalDeliveryCoordinates = [72.8677, 19.0860]; // Mumbai with offset
-    }
-    
-    // Get the coordinates from Redux store as a final safety measure
-    // This ensures we always have the most up-to-date values
-    const { pickupPoint, deliveryPoint } = store.getState().cart;
-    
-    // Create the order data object with proper coordinates
-    const orderData = {
-      items: cartItems.map(item => ({
-        productId: item._id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        sellerId: item.sellerId || item.userId || null,
-        sellerName: item.sellerName || item.userName || null
-      })),
-      deliveryAddress: checkout.deliveryAddress,
-      deliveryMethod: checkout.deliveryMethod,
-      paymentMethod: checkout.paymentMethod,
-      deliveryInstructions: checkout.deliveryInstructions,
-      contactNumber: checkout.contactNumber,
-      subtotal,
-      tax,
-      deliveryFee,
-      discount,
-      total,
-      promoCodeApplied: checkout.appliedPromoCode,
-      // Include coordinates in the proper format for MongoDB
-      pickupLocation: {
-        type: "Point",
-        coordinates: pickupPoint || [72.8777, 19.0760] // Use Redux value or fallback
-      },
-      deliveryLocation: {
-        type: "Point",
-        coordinates: deliveryPoint || [72.8677, 19.0860] // Use Redux value or fallback
-      },
-      // Set initial status to confirmed to make sure it shows in delivery section
-      status: 'confirmed'
-    };
-    
-    // Log the final order data being sent
-    console.log("Final order data:", orderData);
 
-    console.log("Placing order with data:", orderData);
+      // Set up pickup and delivery coordinates
+      let pickupCoordinates, deliveryCoordinates;
+      
+      if (checkout.deliveryMethod === 'pickup') {
+        // For pickup orders: 
+        // - pickup point = seller location (where food is)
+        // - delivery point = current user location (for reference/directions)
+        pickupCoordinates = sellerLocation || [72.8777, 19.0760]; // Mumbai fallback
+        deliveryCoordinates = currentUserLocation || [72.8677, 19.0860]; // Mumbai with offset fallback
+        
+        console.log("Pickup order - Pickup at:", pickupCoordinates, "User at:", deliveryCoordinates);
+      } else {
+        // For delivery orders:
+        // - pickup point = seller location (where food is picked up from)
+        // - delivery point = current user location or delivery address
+        pickupCoordinates = sellerLocation || [72.8777, 19.0760];
+        deliveryCoordinates = currentUserLocation || [72.8677, 19.0860];
+        
+        console.log("Delivery order - Pickup from:", pickupCoordinates, "Deliver to:", deliveryCoordinates);
+      }
+      
+      // Store coordinates in Redux for later use
+      dispatch(setDeliveryPoint(deliveryCoordinates));
+      dispatch({ type: 'cart/setPickupPoint', payload: pickupCoordinates });
+      
+      // Create the order data object with proper coordinates
+      const orderData = {
+        items: cartItems.map(item => ({
+          productId: item._id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          sellerId: item.sellerId || item.userId || item.author || null,
+          sellerName: item.sellerName || item.userName || null
+        })),
+        deliveryAddress: checkout.deliveryMethod === 'pickup' ? 'Self Pickup' : checkout.deliveryAddress,
+        deliveryMethod: checkout.deliveryMethod,
+        paymentMethod: checkout.paymentMethod,
+        deliveryInstructions: checkout.deliveryInstructions,
+        contactNumber: checkout.contactNumber,
+        subtotal,
+        tax,
+        deliveryFee,
+        discount,
+        total,
+        promoCodeApplied: checkout.appliedPromoCode,
+        // Include coordinates in the proper format for MongoDB
+        pickupLocation: {
+          type: "Point",
+          coordinates: pickupCoordinates
+        },
+        deliveryLocation: {
+          type: "Point",
+          coordinates: deliveryCoordinates
+        },
+        // Set initial status to confirmed to make sure it shows in delivery section
+        status: 'confirmed'
+      };
+      
+      // Log the final order data being sent
+      console.log("Final order data with real coordinates:", {
+        pickup: orderData.pickupLocation.coordinates,
+        delivery: orderData.deliveryLocation.coordinates,
+        method: orderData.deliveryMethod
+      });
 
-    try {
-      dispatch(placeOrder(orderData))
-        .unwrap()
-        .then((response) => {
-          console.log("Order placed successfully:", response);
-          toast.success("Order placed successfully!");
-          
-          // Show success step
-          setActiveStep(4);
-          
-          // Store the orderId for navigation after showing success
-          if (response.order && response.order._id) {
-            localStorage.setItem('lastOrderId', response.order._id);
+      const response = await dispatch(placeOrder(orderData)).unwrap();
+      console.log("Order placed successfully:", response);
+      
+      // Handle pickup orders differently
+      if (checkout.deliveryMethod === 'pickup' && response.order) {
+        // For pickup orders, show the pickup success screen with OTP and real coordinates
+        const pickupOrderData = {
+          orderId: response.order._id,
+          total: total,
+          items: cartItems,
+          paymentMethod: checkout.paymentMethod,
+          pickupPoint: pickupCoordinates, // Real seller coordinates
+          pickupAddress: cartItems[0]?.sellerAddress || cartItems[0]?.address || "Restaurant Location",
+          contactNumber: checkout.contactNumber,
+          estimatedReadyTime: "15-20 minutes",
+          // Add seller information for location fetching
+          sellerId: cartItems[0]?.sellerId || cartItems[0]?.userId || cartItems[0]?.author,
+          userLocation: deliveryCoordinates, // Current user location
+          // Include the pickup code from the backend response
+          pickupCode: response.order.pickupCode,
+          pickupCodeExpiresAt: response.order.pickupCodeExpiresAt
+        };
+        
+        console.log("Setting pickup order data with real coordinates and pickup code:", {
+          ...pickupOrderData,
+          pickupCode: pickupOrderData.pickupCode ? '****' : 'NOT PROVIDED' // Log safely
+        });
+        dispatch(setCurrentPickupOrder(pickupOrderData));
+        toast.success("Pickup order placed successfully!");
+        
+        // Clear the cart after successful order placement
+        setTimeout(() => {
+          dispatch(clearCart());
+        }, 1000);
+        
+      } else {
+        // For regular delivery orders, show normal success
+        toast.success("Order placed successfully!");
+        
+        // Show success step
+        setActiveStep(4);
+        
+        // Clear the cart after successful order placement
+        setTimeout(() => {
+          dispatch(clearCart());
+        }, 1000);
+      }
+      
+      // Store the orderId for navigation after showing success
+      if (response.order && response.order._id) {
+        localStorage.setItem('lastOrderId', response.order._id);
+        
+        // Update order status to confirmed
+        updateOrderStatusToConfirmed(response.order._id)
+          .then(() => {
+            console.log('Order confirmed in the system successfully');
             
-            // Update order status to confirmed
-            updateOrderStatusToConfirmed(response.order._id)
-              .then(() => {
-                console.log('Order confirmed in the system successfully');
-                
-                // Directly add this order to the confirmed orders in Redux
-                // This ensures immediate availability in the delivery dashboard
-                dispatch(fetchConfirmedOrders())
-                  .unwrap()
-                  .then(result => {
-                    console.log('Successfully refreshed confirmed orders:', result);
-                    // Also force a refresh to ensure we have all confirmed orders
-                    dispatch(fetchOrders());
-                  })
-                  .catch(err => {
-                    console.error('Failed to refresh confirmed orders, falling back to fetch orders:', err);
-                    // If direct addition fails, fall back to just refreshing the list
-                    dispatch(fetchOrders());
-                  });
+            // Directly add this order to the confirmed orders in Redux
+            // This ensures immediate availability in the delivery dashboard
+            dispatch(fetchConfirmedOrders())
+              .unwrap()
+              .then(result => {
+                console.log('Successfully refreshed confirmed orders:', result);
+                // Also force a refresh to ensure we have all confirmed orders
+                dispatch(fetchOrders());
               })
               .catch(err => {
-                console.error('Error confirming order:', err);
-                // Even if status update fails, try to add to confirmed orders
-                dispatch(fetchConfirmedOrders());
+                console.error('Failed to refresh confirmed orders, falling back to fetch orders:', err);
+                // If direct addition fails, fall back to just refreshing the list
+                dispatch(fetchOrders());
               });
-            
-            // Also update the Redux state directly to ensure immediate UI updates
-            dispatch(syncOrderStatus({
-              orderId: response.order._id,
-              status: 'confirmed'
-            }));
-            
-            // Clear the cart after successful order placement
-            setTimeout(() => {
-              dispatch(clearCart());
-            }, 1000);
-            
-            // Dispatch multiple refreshes of confirmed orders to ensure they appear
-            // First immediate refresh
-            dispatch(fetchOrders());
-            
-            // Then staggered refreshes to ensure backend has processed the order
-            setTimeout(() => dispatch(fetchOrders()), 3000);
-            setTimeout(() => dispatch(fetchOrders()), 6000);
-          }
-          
-          // Refresh orders list to ensure the new order appears in the history
-          setTimeout(() => {
-            dispatch(fetchOrders());
-            
-            // Also refresh confirmed orders in the delivery system
-            dispatch(fetchOrders());
-            
-            // Update localStorage to trigger refresh in other open tabs
-            localStorage.setItem('confirmedOrdersUpdated', Date.now().toString());
-            
-            // Trigger a custom event for real-time update
-            window.dispatchEvent(new CustomEvent('new-confirmed-order', { 
-              detail: { orderId: response.order?._id }
-            }));
-          }, 2000);
-          
-          // Set up polling for real-time updates - fetch confirmed orders every 10 seconds
-          const pollingInterval = setInterval(() => {
-            if (document.visibilityState === 'visible') {
-              dispatch(fetchOrders());
-            }
-          }, 10000);
-          
-          // Clear the interval after 2 minutes (12 polls) or when the page is unloaded
-          setTimeout(() => {
-            clearInterval(pollingInterval);
-          }, 120000);
-          
-          // Also clear on page unload
-          window.addEventListener('beforeunload', () => {
-            clearInterval(pollingInterval);
+          })
+          .catch(err => {
+            console.error('Error confirming order:', err);
+            // Even if status update fails, try to add to confirmed orders
+            dispatch(fetchConfirmedOrders());
           });
-          
-          // Store the polling interval ID in localStorage to potentially clear it on page reloads
-          localStorage.setItem('confirmedOrdersPollingId', Date.now().toString());
-        })
-        .catch((error) => {
-          console.error("Order placement error:", error);
-          toast.error(error?.message || "Failed to place order");
-          
-          // Reset order status to idle
-          dispatch({ type: 'cart/placeOrder/rejected', payload: error || { message: "Unknown error" } });
-          
-          // If there's an authentication error, we could redirect to login
-          if (error?.message?.toLowerCase().includes('logged in')) {
-            // Could redirect to login page
-            toast.error("Please log in to place an order");
-          }
-        });
-    } catch (err) {
-      console.error("Exception in order placement:", err);
-      toast.error("An unexpected error occurred");
-      dispatch({ type: 'cart/placeOrder/rejected', payload: { message: err.message || "Exception occurred" } });
+        
+        // Also update the Redux state directly to ensure immediate UI updates
+        dispatch(syncOrderStatus({
+          orderId: response.order._id,
+          status: 'confirmed'
+        }));
+      }
+      
+      // Refresh orders list to ensure the new order appears in the history
+      setTimeout(() => {
+        dispatch(fetchOrders());
+        
+        // Also refresh confirmed orders in the delivery system
+        dispatch(fetchOrders());
+        
+        // Update localStorage to trigger refresh in other open tabs
+        localStorage.setItem('confirmedOrdersUpdated', Date.now().toString());
+        
+        // Trigger a custom event for real-time update
+        window.dispatchEvent(new CustomEvent('new-confirmed-order', { 
+          detail: { orderId: response.order?._id }
+        }));
+      }, 2000);
+      
+    } catch (error) {
+      console.error("Order placement error:", error);
+      toast.error(error?.message || "Failed to place order");
+      
+      // Reset order status to idle
+      dispatch({ type: 'cart/placeOrder/rejected', payload: error || { message: "Unknown error" } });
+      
+      // If there's an authentication error, we could redirect to login
+      if (error?.message?.toLowerCase().includes('logged in')) {
+        // Could redirect to login page
+        toast.error("Please log in to place an order");
+      }
     }
   };
 
@@ -852,41 +831,7 @@ const CartPage = () => {
         </Typography>
         
         <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Delivery Address"
-              variant="outlined"
-              value={checkout.deliveryAddress}
-              onChange={(e) => dispatch(updateDeliveryAddress(e.target.value))}
-              required
-            />
-          </Grid>
-          
-          <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Contact Number"
-              variant="outlined"
-              value={checkout.contactNumber}
-              onChange={(e) => dispatch(updateContactNumber(e.target.value))}
-              required
-            />
-          </Grid>
-          
-          <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Delivery Instructions (optional)"
-              variant="outlined"
-              multiline
-              rows={3}
-              value={checkout.deliveryInstructions}
-              onChange={(e) => dispatch(updateDeliveryInstructions(e.target.value))}
-              placeholder="E.g., Leave at the door, Call when arriving, etc."
-            />
-          </Grid>
-          
+          {/* Delivery Method Selection */}
           <Grid item xs={12}>
             <FormControl component="fieldset">
               <FormLabel component="legend">Delivery Method</FormLabel>
@@ -923,15 +868,95 @@ const CartPage = () => {
                   control={<Radio />} 
                   label={
                     <Box>
-                      <Typography variant="body1">Pickup (Free)</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Ready for pickup in 15-20 minutes
+                      <Typography variant="body1">🚗 Self Pickup (Free)</Typography>
+                      <Typography variant="caption" color="success.main" sx={{ fontWeight: 'medium' }}>
+                        Ready for pickup in 15-20 minutes • You'll get a 4-digit OTP • View pickup location on map
                       </Typography>
                     </Box>
                   } 
                 />
               </RadioGroup>
             </FormControl>
+          </Grid>
+          
+          {/* Conditional Address Field */}
+          {checkout.deliveryMethod !== 'pickup' && (
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Delivery Address"
+                variant="outlined"
+                value={checkout.deliveryAddress}
+                onChange={(e) => dispatch(updateDeliveryAddress(e.target.value))}
+                required
+                placeholder="Enter your complete delivery address"
+              />
+            </Grid>
+          )}
+          
+          {/* Pickup Information Display */}
+          {checkout.deliveryMethod === 'pickup' && (
+            <Grid item xs={12}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 'medium', mb: 1 }}>
+                  Self Pickup Selected - Here's what happens next:
+                </Typography>
+                <Typography variant="body2" component="div">
+                  • After placing your order, you'll receive a <strong>4-digit OTP</strong><br />
+                  • A map will show you the pickup location and directions<br />
+                  • Your order will be ready in 15-20 minutes<br />
+                  • Show the OTP to the restaurant staff to collect your order
+                </Typography>
+              </Alert>
+              <Box 
+                sx={{ 
+                  p: 2, 
+                  bgcolor: 'grey.50', 
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: 'grey.300'
+                }}
+              >
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Pickup Location:
+                </Typography>
+                <Typography variant="body1" sx={{ fontWeight: 'medium' }}>
+                  {cartItems[0]?.sellerAddress || cartItems[0]?.address || "Restaurant Location"} 
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Exact location will be shown on map after placing order
+                </Typography>
+              </Box>
+            </Grid>
+          )}
+          
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Contact Number"
+              variant="outlined"
+              value={checkout.contactNumber}
+              onChange={(e) => dispatch(updateContactNumber(e.target.value))}
+              required
+              placeholder="Your phone number for order updates"
+            />
+          </Grid>
+          
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label={checkout.deliveryMethod === 'pickup' ? "Special Instructions (optional)" : "Delivery Instructions (optional)"}
+              variant="outlined"
+              multiline
+              rows={3}
+              value={checkout.deliveryInstructions}
+              onChange={(e) => dispatch(updateDeliveryInstructions(e.target.value))}
+              placeholder={
+                checkout.deliveryMethod === 'pickup' 
+                  ? "Any special requests for your order preparation..."
+                  : "E.g., Leave at the door, Call when arriving, etc."
+              }
+            />
           </Grid>
         </Grid>
       </Paper>
@@ -1434,385 +1459,407 @@ const CartPage = () => {
     });
   }, [orders, user]);
 
+  // Auto-fill user address if user has location data
+  useEffect(() => {
+    if (user && user.location && user.location.coordinates) {
+      const [lng, lat] = user.location.coordinates;
+      dispatch(updateDeliveryAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`));
+      dispatch(setDeliveryPoint([lng, lat]));
+    }
+  }, [user, dispatch]);
+
   // Main render
   return (
     <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 mb-16">
-      <Typography variant="h5" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }} gutterBottom>Your Cart</Typography>
-
-      {/* Tabs */}
-      <Tabs 
-        value={activeTab} 
-        onChange={handleTabChange} 
-        aria-label="cart tabs"
-        sx={{ 
-          mb: { xs: 2, sm: 3 },
-          '& .MuiTab-root': { 
-            fontSize: { xs: '0.75rem', sm: '0.875rem' },
-            minHeight: { xs: '48px', sm: '48px' },
-            py: { xs: 1, sm: 1.5 },
-            px: { xs: 1, sm: 2 }
-          }
-        }}
-        variant="scrollable"
-        scrollButtons="auto"
-      >
-        <Tab icon={<ShoppingCart size={18} />} label="Shopping Cart" />
-        <Tab icon={<Favorite size={18} />} label="Saved Items" />
-        <Tab icon={<History size={18} />} label="Order History" />
-      </Tabs>
-
-      {/* Shopping Cart Tab with Checkout Flow */}
-      {activeTab === 0 && (
+      {/* Show pickup success screen if pickup order is active */}
+      {showPickupScreen && currentPickupOrder ? (
+        <PickupSuccessScreen 
+          orderData={currentPickupOrder} 
+          onClose={() => dispatch(clearPickupOrder())}
+        />
+      ) : (
         <>
-          {/* Show stepper only during checkout process */}
-          <Stepper 
-            activeStep={activeStep} 
+          <Typography variant="h5" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }} gutterBottom>Your Cart</Typography>
+
+          {/* Tabs */}
+          <Tabs 
+            value={activeTab} 
+            onChange={handleTabChange} 
+            aria-label="cart tabs"
             sx={{ 
-              mb: { xs: 2, sm: 4 },
-              '& .MuiStepLabel-label': {
-                fontSize: { xs: '0.7rem', sm: '0.875rem' }
-              },
-              '& .MuiStepIcon-root': {
-                fontSize: { xs: '1.2rem', sm: '1.5rem' }
-              },
-              '& .MuiSvgIcon-root': {
-                width: { xs: '1.2rem', sm: '1.5rem' },
-                height: { xs: '1.2rem', sm: '1.5rem' }
+              mb: { xs: 2, sm: 3 },
+              '& .MuiTab-root': { 
+                fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                minHeight: { xs: '48px', sm: '48px' },
+                py: { xs: 1, sm: 1.5 },
+                px: { xs: 1, sm: 2 }
               }
             }}
-            alternativeLabel
+            variant="scrollable"
+            scrollButtons="auto"
           >
-            {steps.map((label, index) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
+            <Tab icon={<ShoppingCart size={18} />} label="Shopping Cart" />
+            <Tab icon={<Favorite size={18} />} label="Saved Items" />
+            <Tab icon={<History size={18} />} label="Order History" />
+          </Tabs>
 
-          {activeStep === 0 ? (
-            <div>
-              {renderCartItems()}
-              {cartItems.length > 0 && renderOrderSummary()}
-            </div>
-          ) : activeStep === 1 ? (
-            <div>
-              {renderDeliveryForm()}
-              {renderOrderSummary()}
-            </div>
-          ) : activeStep === 2 ? (
-            <div>
-              {renderPaymentForm()}
-              {renderOrderSummary()}
-            </div>
-          ) : activeStep === 3 ? (
-            <div>
-              {renderOrderReview()}
-              {renderOrderSummary()}
-            </div>
-          ) : (
-            <div>
-              {renderSuccessMessage()}
-            </div>
-          )}
-
-          {/* Navigation buttons for checkout process */}
-          <Box sx={{ 
-            display: 'flex', 
-            flexDirection: 'row', 
-            pt: { xs: 1, sm: 2 },
-            pb: { xs: 2, sm: 0 }
-          }}>
-            <Button
-              color="inherit"
-              disabled={activeStep === 0 || activeStep === steps.length}
-              onClick={handleBack}
-              sx={{ 
-                mr: 1,
-                fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                py: { xs: 0.5, sm: 0.75 },
-                px: { xs: 1, sm: 2 }
-              }}
-              size="small"
-            >
-              Back
-            </Button>
-            <Box sx={{ flex: '1 1 auto' }} />
-            {activeStep === steps.length ? (
-              <Button 
-                onClick={() => navigate('/')}
+          {/* Shopping Cart Tab with Checkout Flow */}
+          {activeTab === 0 && (
+            <>
+              {/* Show stepper only during checkout process */}
+              <Stepper 
+                activeStep={activeStep} 
                 sx={{ 
-                  fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                  py: { xs: 0.5, sm: 0.75 },
-                  px: { xs: 1, sm: 2 }
+                  mb: { xs: 2, sm: 4 },
+                  '& .MuiStepLabel-label': {
+                    fontSize: { xs: '0.7rem', sm: '0.875rem' }
+                  },
+                  '& .MuiStepIcon-root': {
+                    fontSize: { xs: '1.2rem', sm: '1.5rem' }
+                  },
+                  '& .MuiSvgIcon-root': {
+                    width: { xs: '1.2rem', sm: '1.5rem' },
+                    height: { xs: '1.2rem', sm: '1.5rem' }
+                  }
                 }}
-                size="small"
+                alternativeLabel
               >
-                Continue Shopping
-              </Button>
-            ) : (
-              <Button 
-                onClick={activeStep === steps.length - 1 ? handlePlaceOrder : handleNext}
-                variant="contained"
-                disabled={cartItems.length === 0 && activeStep === 0}
-                sx={{ 
-                  fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                  py: { xs: 0.5, sm: 0.75 },
-                  px: { xs: 1, sm: 2 }
-                }}
-                size="small"
-              >
-                {activeStep === steps.length - 1 ? 'Place Order' : 'Next'}
-              </Button>
-            )}
-          </Box>
+                {steps.map((label, index) => (
+                  <Step key={label}>
+                    <StepLabel>{label}</StepLabel>
+                  </Step>
+                ))}
+              </Stepper>
 
-          {/* Debug info - hidden by default */}
-          {renderDebugInfo && renderDebugInfo()}
-        </>
-      )}
+              {activeStep === 0 ? (
+                <div>
+                  {renderCartItems()}
+                  {cartItems.length > 0 && renderOrderSummary()}
+                </div>
+              ) : activeStep === 1 ? (
+                <div>
+                  {renderDeliveryForm()}
+                  {renderOrderSummary()}
+                </div>
+              ) : activeStep === 2 ? (
+                <div>
+                  {renderPaymentForm()}
+                  {renderOrderSummary()}
+                </div>
+              ) : activeStep === 3 ? (
+                <div>
+                  {renderOrderReview()}
+                  {renderOrderSummary()}
+                </div>
+              ) : (
+                <div>
+                  {renderSuccessMessage()}
+                </div>
+              )}
 
-      {/* Saved Items Tab */}
-      {activeTab === 1 && (
-        <div>
-          {renderSavedItems()}
-        </div>
-      )}
-      
-      {/* Order History Tab */}
-      {activeTab === 2 && (
-        <div>
-          {!user ? (
-            <Box sx={{ 
-              p: 4, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center',
-              textAlign: 'center',
-              bgcolor: 'background.paper',
-              borderRadius: 2,
-              boxShadow: 1
-            }}>
-              <Typography variant="h6" gutterBottom>
-                Sign in to view your order history
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                Your order history will be available once you sign in to your account.
-              </Typography>
-              <Button 
-                variant="contained" 
-                color="primary"
-                onClick={() => navigate('/login')}
-              >
-                Sign In
-              </Button>
-            </Box>
-          ) : loadingOrders ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', my: 4, flexDirection: 'column', alignItems: 'center' }}>
-              <CircularProgress sx={{ mb: 2 }} />
-              <Typography variant="body2" color="text.secondary">
-                Loading your order history...
-              </Typography>
-            </Box>
-          ) : userOrders.length === 0 ? (
-            <Box sx={{ 
-              p: 4, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center',
-              textAlign: 'center',
-              bgcolor: 'background.paper',
-              borderRadius: 2,
-              boxShadow: 1
-            }}>
-              <Typography variant="h6" gutterBottom>
-                No orders yet
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                You haven't placed any orders yet. Start shopping to see your orders here.
-              </Typography>
-              <Button 
-                variant="contained" 
-                color="primary" 
-                onClick={() => navigate('/')}
-              >
-                Browse Products
-              </Button>
-            </Box>
-          ) : (
-            <Box>
+              {/* Navigation buttons for checkout process */}
               <Box sx={{ 
                 display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                mb: 3 
+                flexDirection: 'row', 
+                pt: { xs: 1, sm: 2 },
+                pb: { xs: 2, sm: 0 }
               }}>
-                <Box>
+                <Button
+                  color="inherit"
+                  disabled={activeStep === 0 || activeStep === steps.length}
+                  onClick={handleBack}
+                  sx={{ 
+                    mr: 1,
+                    fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                    py: { xs: 0.5, sm: 0.75 },
+                    px: { xs: 1, sm: 2 }
+                  }}
+                  size="small"
+                >
+                  Back
+                </Button>
+                <Box sx={{ flex: '1 1 auto' }} />
+                {activeStep === steps.length ? (
+                  <Button 
+                    onClick={() => navigate('/')}
+                    sx={{ 
+                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                      py: { xs: 0.5, sm: 0.75 },
+                      px: { xs: 1, sm: 2 }
+                    }}
+                    size="small"
+                  >
+                    Continue Shopping
+                  </Button>
+                ) : (
+                  <Button 
+                    onClick={activeStep === steps.length - 1 ? handlePlaceOrder : handleNext}
+                    variant="contained"
+                    disabled={cartItems.length === 0 && activeStep === 0}
+                    sx={{ 
+                      fontSize: { xs: '0.75rem', sm: '0.875rem' },
+                      py: { xs: 0.5, sm: 0.75 },
+                      px: { xs: 1, sm: 2 }
+                    }}
+                    size="small"
+                  >
+                    {activeStep === steps.length - 1 ? 'Place Order' : 'Next'}
+                  </Button>
+                )}
+              </Box>
+
+              {/* Debug info - hidden by default */}
+              {renderDebugInfo && renderDebugInfo()}
+            </>
+          )}
+
+          {/* Saved Items Tab */}
+          {activeTab === 1 && (
+            <div>
+              {renderSavedItems()}
+            </div>
+          )}
+          
+          {/* Order History Tab */}
+          {activeTab === 2 && (
+            <div>
+              {!user ? (
+                <Box sx={{ 
+                  p: 4, 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center',
+                  bgcolor: 'background.paper',
+                  borderRadius: 2,
+                  boxShadow: 1
+                }}>
                   <Typography variant="h6" gutterBottom>
-                    {user.username ? `${user.username}'s Orders` : 'Your Orders'}
+                    Please log in to view your orders
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Showing {userOrders.length} orders from your account
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    You need to be logged in to view your order history.
+                  </Typography>
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    onClick={() => navigate('/login')}
+                  >
+                    Go to Login
+                  </Button>
+                </Box>
+              ) : loadingOrders ? (
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  py: 4 
+                }}>
+                  <CircularProgress />
+                  <Typography variant="body2" sx={{ ml: 2 }}>
+                    Loading your orders...
                   </Typography>
                 </Box>
-                <Button 
-                  startIcon={<Refresh />}
-                  variant="outlined"
-                  onClick={handleRefreshOrders}
-                  disabled={loadingOrders}
-                >
-                  Refresh
-                </Button>
-              </Box>
-
-              {userOrders.map((order) => (
-                <Card 
-                  key={order._id} 
-                  sx={{ 
-                    mb: 3,
-                    boxShadow: 'rgb(0 0 0 / 10%) 0px 2px 8px',
-                    transition: 'transform 0.2s',
-                    '&:hover': {
-                      transform: 'translateY(-4px)'
-                    },
-                    cursor: 'pointer',
-                    position: 'relative',
-                    overflow: 'visible'
-                  }}
-                  onClick={() => handleViewOrderDetails(order._id)}
-                >
-                  {/* Personal order badge */}
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: -10,
-                      right: 15,
-                      backgroundColor: 'primary.main',
-                      color: 'white',
-                      fontWeight: 'bold',
-                      fontSize: '0.75rem',
-                      py: 0.5,
-                      px: 1.5,
-                      borderRadius: 5,
-                      zIndex: 1,
-                      boxShadow: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.5
-                    }}
+              ) : userOrders.length === 0 ? (
+                <Box sx={{ 
+                  p: 4, 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center',
+                  bgcolor: 'background.paper',
+                  borderRadius: 2,
+                  boxShadow: 1
+                }}>
+                  <Typography variant="h6" gutterBottom>
+                    No orders yet
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    You haven't placed any orders yet. Start shopping to see your orders here.
+                  </Typography>
+                  <Button 
+                    variant="contained" 
+                    color="primary" 
+                    onClick={() => navigate('/')}
                   >
-                    <Typography variant="caption" sx={{ fontWeight: 'bold' }}>Your Order</Typography>
-                  </Box>
-                  
-                  <CardContent sx={{ p: 3 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap' }}>
-                      <Typography variant="subtitle1">
-                        Order #{order._id.substring(order._id.length - 6)}
+                    Browse Products
+                  </Button>
+                </Box>
+              ) : (
+                <Box>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    mb: 3 
+                  }}>
+                    <Box>
+                      <Typography variant="h6" gutterBottom>
+                        {user.username ? `${user.username}'s Orders` : 'Your Orders'}
                       </Typography>
-                      <Chip 
-                        label={order.status.replace(/_/g, ' ').toUpperCase()}
-                        color={getStatusColor(order.status)}
-                        size="small"
-                      />
+                      <Typography variant="body2" color="text.secondary">
+                        Showing {userOrders.length} orders from your account
+                      </Typography>
                     </Box>
-                    
-                    <Typography variant="body2" color="text.secondary">
-                      Placed on {formatDate(order.createdAt)}
-                    </Typography>
-                    
-                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box>
-                        <Typography variant="body2">
-                          {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
-                        </Typography>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                          Total: ₹{(order.total || order.totalAmount || 0).toFixed(2)}
-                        </Typography>
-                      </Box>
-                      <Button 
-                        variant="outlined"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewOrderDetails(order._id);
-                        }}
-                        endIcon={<KeyboardArrowRight />}
-                      >
-                        View Details
-                      </Button>
-                    </Box>
+                    <Button 
+                      startIcon={<Refresh />}
+                      variant="outlined"
+                      onClick={handleRefreshOrders}
+                      disabled={loadingOrders}
+                    >
+                      Refresh
+                    </Button>
+                  </Box>
 
-                    {order.items.length > 0 && (
-                      <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #eee' }}>
-                        <Grid container spacing={1}>
-                          {order.items.slice(0, 3).map((item, index) => (
-                            <Grid item key={index}>
-                              {item.image ? (
-                                <Box
-                                  component="img"
-                                  src={item.image}
-                                  alt={item.name}
-                                  sx={{ 
-                                    width: 40, 
-                                    height: 40, 
-                                    objectFit: 'cover', 
-                                    borderRadius: 1,
-                                    mr: 0.5 
-                                  }}
-                                />
-                              ) : (
-                                <Box 
-                                  sx={{ 
-                                    width: 40, 
-                                    height: 40, 
-                                    bgcolor: 'grey.200',
-                                    borderRadius: 1,
-                                    mr: 0.5,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                  }}
-                                >
-                                  <ShoppingCart color="action" fontSize="small" />
-                                </Box>
+                  {userOrders.map((order) => (
+                    <Card 
+                      key={order._id} 
+                      sx={{ 
+                        mb: 3,
+                        boxShadow: 'rgb(0 0 0 / 10%) 0px 2px 8px',
+                        transition: 'transform 0.2s',
+                        '&:hover': {
+                          transform: 'translateY(-4px)'
+                        },
+                        cursor: 'pointer',
+                        position: 'relative',
+                        overflow: 'visible'
+                      }}
+                      onClick={() => handleViewOrderDetails(order._id)}
+                    >
+                      {/* Personal order badge */}
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: -10,
+                          right: 15,
+                          backgroundColor: 'primary.main',
+                          color: 'white',
+                          fontWeight: 'bold',
+                          fontSize: '0.75rem',
+                          py: 0.5,
+                          px: 1.5,
+                          borderRadius: 5,
+                          zIndex: 1,
+                          boxShadow: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5
+                        }}
+                      >
+                        <Typography variant="caption" sx={{ fontWeight: 'bold' }}>Your Order</Typography>
+                      </Box>
+                      
+                      <CardContent sx={{ p: 3 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap' }}>
+                          <Typography variant="subtitle1">
+                            Order #{order._id.substring(order._id.length - 6)}
+                          </Typography>
+                          <Chip 
+                            label={order.status.replace(/_/g, ' ').toUpperCase()}
+                            color={getStatusColor(order.status)}
+                            size="small"
+                          />
+                        </Box>
+                        
+                        <Typography variant="body2" color="text.secondary">
+                          Placed on {formatDate(order.createdAt)}
+                        </Typography>
+                        
+                        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Box>
+                            <Typography variant="body2">
+                              {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
+                            </Typography>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              Total: ₹{(order.total || order.totalAmount || 0).toFixed(2)}
+                            </Typography>
+                          </Box>
+                          <Button 
+                            variant="outlined"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewOrderDetails(order._id);
+                            }}
+                            endIcon={<KeyboardArrowRight />}
+                          >
+                            View Details
+                          </Button>
+                        </Box>
+
+                        {order.items.length > 0 && (
+                          <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #eee' }}>
+                            <Grid container spacing={1}>
+                              {order.items.slice(0, 3).map((item, index) => (
+                                <Grid item key={index}>
+                                  {item.image ? (
+                                    <Box
+                                      component="img"
+                                      src={item.image}
+                                      alt={item.name}
+                                      sx={{ 
+                                        width: 40, 
+                                        height: 40, 
+                                        objectFit: 'cover', 
+                                        borderRadius: 1,
+                                        mr: 0.5 
+                                      }}
+                                    />
+                                  ) : (
+                                    <Box 
+                                      sx={{ 
+                                        width: 40, 
+                                        height: 40, 
+                                        bgcolor: 'grey.200',
+                                        borderRadius: 1,
+                                        mr: 0.5,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                      }}
+                                    >
+                                      <ShoppingCart color="action" fontSize="small" />
+                                    </Box>
+                                  )}
+                                </Grid>
+                              ))}
+                              {order.items.length > 3 && (
+                                <Grid item>
+                                  <Box 
+                                    sx={{ 
+                                      width: 40, 
+                                      height: 40, 
+                                      bgcolor: 'grey.100',
+                                      color: 'text.secondary',
+                                      borderRadius: 1,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    +{order.items.length - 3}
+                                  </Box>
+                                </Grid>
                               )}
                             </Grid>
-                          ))}
-                          {order.items.length > 3 && (
-                            <Grid item>
-                              <Box 
-                                sx={{ 
-                                  width: 40, 
-                                  height: 40, 
-                                  bgcolor: 'grey.100',
-                                  color: 'text.secondary',
-                                  borderRadius: 1,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontWeight: 'bold'
-                                }}
-                              >
-                                +{order.items.length - 3}
-                              </Box>
-                            </Grid>
-                          )}
-                        </Grid>
-                      </Box>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-              
-              <Box sx={{ mt: 3, textAlign: 'center' }}>
-                <Button 
-                  variant="contained"
-                  onClick={() => navigate('/orders')}
-                >
-                  View All Orders
-                </Button>
-              </Box>
-            </Box>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                  
+                  <Box sx={{ mt: 3, textAlign: 'center' }}>
+                    <Button 
+                      variant="contained"
+                      onClick={() => navigate('/orders')}
+                    >
+                      View All Orders
+                    </Button>
+                  </Box>
+                </Box>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

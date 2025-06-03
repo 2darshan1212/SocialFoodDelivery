@@ -131,19 +131,42 @@ const OrderHistory = () => {
             prevOrders.map(order => {
               if (order._id === latestUpdate.orderId) {
                 console.log(`Updating local order ${order._id} status from ${order.status} to ${latestUpdate.status}`);
-                return {
+                
+                // Special handling for pickup completion
+                const updatedOrder = {
                   ...order,
                   status: latestUpdate.status,
                   updatedAt: latestUpdate.timestamp || new Date().toISOString()
                 };
+                
+                // If this is a pickup completion, add additional fields
+                if (latestUpdate.status === 'delivered' && order.deliveryMethod === 'pickup') {
+                  updatedOrder.actualDeliveryTime = latestUpdate.timestamp || new Date().toISOString();
+                  updatedOrder.isPickupCompleted = true;
+                  
+                  // Show special toast for pickup completion
+                  toast.success('🎉 Your pickup order has been completed! Thank you for choosing us.');
+                }
+                
+                return updatedOrder;
               }
               return order;
             })
           );
           
-          // Show a toast notification about the update
+          // Show appropriate toast notification
+          if (latestUpdate.status === 'delivered') {
+            // Check if this is a pickup order completion
+            const affectedOrder = localOrders.find(order => order._id === latestUpdate.orderId);
+            if (affectedOrder?.deliveryMethod === 'pickup') {
+              toast.success('🎉 Your pickup order has been completed!');
+            } else {
+              toast.info('📦 Order status updated to DELIVERED');
+            }
+          } else {
           const formattedStatus = latestUpdate.status.replace(/_/g, ' ').toUpperCase();
-          toast.info(`Order status updated to ${formattedStatus}`);
+            toast.info(`📦 Order status updated to ${formattedStatus}`);
+          }
           
           // Also trigger a full refresh from the server to get complete data
           // But do it with a slight delay to prevent over-fetching
@@ -154,7 +177,7 @@ const OrderHistory = () => {
         }
       }
     }
-  }, [socketOrderUpdates, lastUpdateTime, loadOrders]);
+  }, [socketOrderUpdates, lastUpdateTime, loadOrders, localOrders]);
 
   // Monitor socket connection status
   useEffect(() => {
@@ -407,10 +430,39 @@ const OrderHistory = () => {
                       '&:hover': {
                         transform: 'translateY(-4px)',
                         boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                      }
+                      },
+                      // Special styling for completed pickup orders
+                      ...(order.deliveryMethod === 'pickup' && order.status === 'delivered' && {
+                        border: '2px solid',
+                        borderColor: 'success.main',
+                        bgcolor: 'success.light',
+                        opacity: 0.95
+                      })
                     }}
                   >
                     <CardContent>
+                      {/* Special pickup completion banner */}
+                      {order.deliveryMethod === 'pickup' && order.status === 'delivered' && (
+                        <Alert 
+                          severity="success" 
+                          sx={{ 
+                            mb: 2, 
+                            bgcolor: 'success.main',
+                            color: 'white',
+                            '& .MuiAlert-icon': { color: 'white' }
+                          }}
+                        >
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                              🎉 Order Successfully Picked Up!
+                            </Typography>
+                          </Box>
+                          <Typography variant="body2" sx={{ mt: 0.5 }}>
+                            You have successfully picked up your order from the self-pickup point. Thank you for choosing us!
+                          </Typography>
+                        </Alert>
+                      )}
+
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                         <Box>
                           <Typography variant="h6">Order #{order._id.substring(order._id.length - 6)}</Typography>
@@ -420,6 +472,23 @@ const OrderHistory = () => {
                           <Typography variant="caption" color="text.secondary">
                             Last updated: {formatDate(order.updatedAt || order.createdAt)}
                           </Typography>
+                          {/* Show delivery method */}
+                          <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Chip 
+                              label={order.deliveryMethod === 'pickup' ? '🚗 Self Pickup' : '🚚 Home Delivery'}
+                              size="small"
+                              color={order.deliveryMethod === 'pickup' ? 'primary' : 'default'}
+                              variant="outlined"
+                            />
+                            {order.deliveryMethod === 'pickup' && order.status === 'delivered' && (
+                              <Chip 
+                                label="✅ Picked Up"
+                                size="small"
+                                color="success"
+                                variant="filled"
+                              />
+                            )}
+                          </Box>
                         </Box>
                         <Box>
                           <Chip 
@@ -477,12 +546,34 @@ const OrderHistory = () => {
                       
                       <Grid container spacing={2} sx={{ mb: 2 }}>
                         <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2" gutterBottom>Delivery Address:</Typography>
-                          <Typography variant="body2">{order.deliveryAddress || 'No address provided'}</Typography>
+                          <Typography variant="subtitle2" gutterBottom>
+                            {order.deliveryMethod === 'pickup' ? 'Pickup Point:' : 'Delivery Address:'}
+                          </Typography>
+                          <Typography variant="body2">
+                            {order.deliveryMethod === 'pickup' 
+                              ? (order.pickupPoint || 'Self-pickup location as per order')
+                              : (order.deliveryAddress || 'No address provided')
+                            }
+                          </Typography>
+                          {/* Show pickup completion details for completed pickup orders */}
+                          {order.deliveryMethod === 'pickup' && order.status === 'delivered' && (
+                            <Typography variant="caption" color="success.main" sx={{ display: 'block', mt: 0.5, fontWeight: 'bold' }}>
+                              ✅ Successfully picked up from self-pickup point
+                            </Typography>
+                          )}
                         </Grid>
                         <Grid item xs={12} sm={6}>
                           <Typography variant="subtitle2" gutterBottom>Contact Number:</Typography>
                           <Typography variant="body2">{order.contactNumber || 'No contact provided'}</Typography>
+                          {/* Show pickup completion time for completed pickup orders */}
+                          {order.deliveryMethod === 'pickup' && order.status === 'delivered' && order.actualDeliveryTime && (
+                            <>
+                              <Typography variant="subtitle2" gutterBottom sx={{ mt: 1 }}>Pickup Completed:</Typography>
+                              <Typography variant="body2" color="success.main" sx={{ fontWeight: 'bold' }}>
+                                {formatDate(order.actualDeliveryTime)}
+                              </Typography>
+                            </>
+                          )}
                         </Grid>
                       </Grid>
                       

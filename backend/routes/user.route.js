@@ -20,6 +20,7 @@ import { verifyToken } from "../middlewares/verifyToken.js";
 import upload from "../middlewares/multer.js";
 import { verifyAdmin } from "../middlewares/verifyAdmin.js";
 import { User } from "../models/user.model.js";
+import { Post } from "../models/post.model.js";
 const router = express.Router();
 
 router.route("/register").post(register);
@@ -39,6 +40,87 @@ router.post("/location", verifyToken, updateUserLocation);
 router.get("/nearby", verifyToken, findNearbyUsers);
 router.get("/search", verifyToken, searchUsers);
 router.get("/profile", verifyToken, getCurrentUserProfile);
+
+// Location-specific endpoints for pickup functionality
+router.get("/:userId/location", verifyToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    console.log("Fetching location for user ID:", userId);
+    
+    const user = await User.findById(userId).select('location username');
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+    
+    if (!user.location || !user.location.coordinates) {
+      return res.status(404).json({
+        success: false,
+        message: "User location not available"
+      });
+    }
+    
+    console.log("Found user location:", user.location.coordinates);
+    
+    return res.status(200).json({
+      success: true,
+      location: user.location,
+      username: user.username
+    });
+  } catch (error) {
+    console.error("Error fetching user location:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching user location",
+      error: error.message
+    });
+  }
+});
+
+// Get post author location for pickup
+router.get("/post/:postId/author-location", verifyToken, async (req, res) => {
+  try {
+    const { postId } = req.params;
+    console.log("Fetching author location for post ID:", postId);
+    
+    const post = await Post.findById(postId)
+      .populate('author', 'location username')
+      .select('author');
+    
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found"
+      });
+    }
+    
+    if (!post.author || !post.author.location || !post.author.location.coordinates) {
+      return res.status(404).json({
+        success: false,
+        message: "Post author location not available"
+      });
+    }
+    
+    console.log("Found post author location:", post.author.location.coordinates);
+    
+    return res.status(200).json({
+      success: true,
+      location: post.author.location,
+      username: post.author.username,
+      authorId: post.author._id
+    });
+  } catch (error) {
+    console.error("Error fetching post author location:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching post author location",
+      error: error.message
+    });
+  }
+});
 
 // Route to check if user is admin
 router.route("/check-admin").get(verifyToken, (req, res) => {

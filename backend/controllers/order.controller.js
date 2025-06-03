@@ -2,6 +2,8 @@ import Order from "../models/order.model.js";
 import { User } from "../models/user.model.js";
 import { Post } from "../models/post.model.js";
 import createError from "../utils/error.js";
+import { createNotification } from "./notification.controller.js";
+import { io, getReceiverSocketId, getConnectedUsers } from "../socket/socket.js";
 
 // Create a new order
 export const createOrder = async (req, res, next) => {
@@ -38,7 +40,9 @@ export const createOrder = async (req, res, next) => {
       return next(createError(400, "Contact number is required"));
     }
     
-    // Validate items array
+    // Validate items array and collect post authors for notifications
+    const postAuthors = new Set(); // Use Set to avoid duplicate notifications to same author
+    
     for (const item of items) {
       if (!item.productId) {
         return next(createError(400, "Each item must have a product ID"));
@@ -48,11 +52,23 @@ export const createOrder = async (req, res, next) => {
         return next(createError(400, "Each item must have a valid quantity"));
       }
       
-      // Verify product exists but allow any quantity
+      // Verify product exists and collect author info
       try {
-        const product = await Post.findById(item.productId);
+        const product = await Post.findById(item.productId).populate('author', 'username profilePicture');
         if (!product) {
           return next(createError(404, `Product not found: ${item.productId}`));
+        }
+        
+        // Add the post author to our notification list
+        if (product.author && product.author._id.toString() !== req.user.id) {
+          postAuthors.add({
+            authorId: product.author._id.toString(),
+            authorUsername: product.author.username,
+            authorProfilePicture: product.author.profilePicture,
+            postId: product._id,
+            postCaption: product.caption,
+            postImage: product.image
+          });
         }
         
         // Always allow ordering any quantity, regardless of available stock
@@ -81,6 +97,17 @@ export const createOrder = async (req, res, next) => {
       note: 'Order received'
     }];
 
+    // Generate pickup code for pickup orders
+    let pickupCode = null;
+    let pickupCodeExpiresAt = null;
+    
+    if (deliveryMethod === 'pickup') {
+      // Generate 4-digit pickup code
+      pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
+      // Set expiration time to 24 hours from now
+      pickupCodeExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    }
+
     // Create the order with a default status of 'processing'
     const newOrder = new Order({
       user: req.user.id,
@@ -100,12 +127,114 @@ export const createOrder = async (req, res, next) => {
       status: 'processing',
       paymentMethod,
       paymentStatus: paymentMethod === 'cash' ? 'pending' : 'paid',
-      statusHistory
+      statusHistory,
+      pickupCode,
+      pickupCodeExpiresAt
     });
 
     // Save the order
     const savedOrder = await newOrder.save();
     console.log("Order saved successfully:", savedOrder._id);
+
+    // Get the customer details for notification
+    const customer = await User.findById(req.user.id).select('username profilePicture');
+
+    // Send notifications to all post authors whose items were ordered
+    console.log(`Found ${postAuthors.size} unique post authors to notify:`, Array.from(postAuthors).map(a => a.authorUsername));
+    
+    // Debug: Show all connected users
+    console.log('=== DEBUG: Connected users at notification time ===');
+    getConnectedUsers();
+    
+    for (const authorInfo of postAuthors) {
+      try {
+        console.log(`Processing notification for author: ${authorInfo.authorUsername} (${authorInfo.authorId})`);
+        
+        // Create notification message
+        const orderItemsCount = items.filter(item => 
+          item.productId && savedOrder.items.some(orderItem => 
+            orderItem.productId.toString() === item.productId.toString()
+          )
+        ).length;
+        
+        const isPickupOrder = deliveryMethod === 'pickup';
+        const notificationMessage = isPickupOrder 
+          ? `${customer.username} placed a pickup order for ${orderItemsCount} item(s) from your post - Total: ₹${total.toFixed(2)}`
+          : `${customer.username} placed an order for ${orderItemsCount} item(s) from your post - Total: ₹${total.toFixed(2)}`;
+
+        console.log(`Creating database notification for ${authorInfo.authorUsername} with message: ${notificationMessage}`);
+
+        // Create notification in database
+        const dbNotification = await createNotification(
+          req.user.id, // sender (customer)
+          authorInfo.authorId, // recipient (post author)
+          "order", // notification type
+          notificationMessage,
+          authorInfo.postId, // post reference
+          null, // no comment reference
+          savedOrder._id // order reference
+        );
+        
+        if (dbNotification) {
+          console.log(`Database notification created successfully with ID: ${dbNotification._id}`);
+        } else {
+          console.error(`Failed to create database notification for ${authorInfo.authorUsername}`);
+        }
+
+        // Send real-time socket notification to post author
+        const authorSocketId = getReceiverSocketId(authorInfo.authorId);
+        console.log(`Socket ID for ${authorInfo.authorUsername}: ${authorSocketId}`);
+        
+        if (authorSocketId) {
+          const realtimeNotification = {
+            type: "order",
+            sender: {
+              _id: req.user.id,
+              username: customer.username,
+              profilePicture: customer.profilePicture
+            },
+            recipient: authorInfo.authorId,
+            post: {
+              _id: authorInfo.postId,
+              caption: authorInfo.postCaption,
+              image: authorInfo.postImage
+            },
+            order: {
+              _id: savedOrder._id,
+              total: total,
+              itemsCount: orderItemsCount,
+              deliveryMethod: deliveryMethod,
+              status: savedOrder.status,
+              createdAt: savedOrder.createdAt,
+              contactNumber: contactNumber,
+              items: items.filter(item => 
+                savedOrder.items.some(orderItem => 
+                  orderItem.productId.toString() === item.productId.toString()
+                )
+              ).map(item => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                price: item.price,
+                name: item.name
+              }))
+            },
+            message: notificationMessage,
+            createdAt: new Date().toISOString(),
+            read: false
+          };
+
+          console.log(`Sending real-time notification to ${authorInfo.authorUsername}:`, JSON.stringify(realtimeNotification, null, 2));
+          io.to(authorSocketId).emit("newNotification", realtimeNotification);
+          console.log(`Real-time notification sent successfully to ${authorInfo.authorUsername}`);
+        } else {
+          console.log(`Post author ${authorInfo.authorUsername} is not online, notification saved to database only`);
+        }
+
+      } catch (notificationError) {
+        console.error(`Failed to send notification to post author ${authorInfo.authorId}:`, notificationError);
+        // Continue with order creation even if notification fails
+      }
+    }
 
     // Update product stock/inventory but don't enforce quantity limits
     for (const item of items) {
@@ -211,7 +340,7 @@ export const getOrderById = async (req, res, next) => {
   try {
     const orderId = req.params.id;
 
-    // Make sure order exists and belongs to current user
+    // Find the order
     const order = await Order.findById(orderId)
       .populate({
         path: 'items.productId',
@@ -230,10 +359,39 @@ export const getOrderById = async (req, res, next) => {
       return next(createError(404, "Order not found"));
     }
 
-    // Check if the order belongs to the user or if user is admin
-    if (order.user.toString() !== req.user.id && !req.user.isAdmin) {
+    // Check if the order belongs to the user or if user is admin, or if user is author of items in a pickup order
+    const isOrderOwner = order.user.toString() === req.user.id;
+    const isAdmin = req.user.isAdmin;
+    
+    // For pickup orders, check if the current user is an author of any items in the order
+    let isItemAuthor = false;
+    if (order.deliveryMethod === 'pickup') {
+      // Populate the items to check authorship
+      await order.populate({
+        path: 'items.productId',
+        select: 'author',
+        populate: {
+          path: 'author',
+          select: '_id'
+        }
+      });
+      
+      isItemAuthor = order.items.some(item => 
+        item.productId && 
+        item.productId.author && 
+        item.productId.author._id.toString() === req.user.id
+      );
+    }
+    
+    if (!isOrderOwner && !isAdmin && !isItemAuthor) {
       return next(createError(403, "You are not authorized to access this order"));
     }
+
+    // Re-populate items with full details for response
+    await order.populate({
+      path: 'items.productId',
+      select: 'caption image price category vegetarian'
+    });
 
     // Format order items with product details
     const formattedItems = order.items.map(item => {
@@ -291,6 +449,20 @@ export const getOrderById = async (req, res, next) => {
       statusHistory: order.statusHistory || [],
       latestStatus: latestStatus
     };
+
+    // Add customer information for pickup orders when accessed by post authors
+    if (order.deliveryMethod === 'pickup' && isItemAuthor) {
+      await order.populate({
+        path: 'user',
+        select: 'username profilePicture'
+      });
+      
+      formattedOrder.customer = {
+        username: order.user.username,
+        profilePicture: order.user.profilePicture,
+        contactNumber: order.contactNumber
+      };
+    }
 
     return res.status(200).json({
       success: true,
@@ -776,5 +948,415 @@ export const assignOrderAgent = async (req, res, next) => {
   } catch (error) {
     console.error("Error assigning delivery agent:", error);
     return next(createError(500, "Error assigning delivery agent"));
+  }
+};
+
+// Test notification function (for debugging)
+export const testNotification = async (req, res, next) => {
+  try {
+    const { recipientId, message = "Test order notification" } = req.body;
+    
+    if (!recipientId) {
+      return next(createError(400, "Recipient ID is required"));
+    }
+
+    console.log(`=== TESTING NOTIFICATION SYSTEM ===`);
+    console.log(`Sender: ${req.user.username} (${req.user.id})`);
+    console.log(`Recipient: ${recipientId}`);
+    console.log(`Message: ${message}`);
+    
+    // Debug: Show all connected users
+    console.log('=== DEBUG: Connected users at test time ===');
+    getConnectedUsers();
+    
+    // Get customer details
+    const customer = await User.findById(req.user.id).select('username profilePicture');
+    
+    // Create a fake order for testing
+    const fakeOrder = {
+      _id: "test-order-" + Date.now(),
+      total: 299.99,
+      status: "processing",
+      createdAt: new Date()
+    };
+    
+    // Get post author details
+    const postAuthor = await User.findById(recipientId).select('username profilePicture');
+    if (!postAuthor) {
+      return next(createError(404, "Post author not found"));
+    }
+    
+    console.log(`Creating database notification for ${postAuthor.username}...`);
+    
+    // Create notification in database
+    const dbNotification = await createNotification(
+      req.user.id, // sender (customer)
+      recipientId, // recipient (post author)
+      "order", // notification type
+      message,
+      null, // no post reference for test
+      null, // no comment reference
+      fakeOrder._id // fake order reference
+    );
+    
+    if (dbNotification) {
+      console.log(`Database notification created successfully with ID: ${dbNotification._id}`);
+    } else {
+      console.error(`Failed to create database notification for ${postAuthor.username}`);
+    }
+
+    // Send real-time socket notification to post author
+    const authorSocketId = getReceiverSocketId(recipientId);
+    console.log(`Socket ID for ${postAuthor.username}: ${authorSocketId}`);
+    
+    if (authorSocketId) {
+      const realtimeNotification = {
+        type: "order",
+        sender: {
+          _id: req.user.id,
+          username: customer.username,
+          profilePicture: customer.profilePicture
+        },
+        recipient: recipientId,
+        post: null, // no post for test
+        order: fakeOrder,
+        message: message,
+        createdAt: new Date().toISOString(),
+        read: false
+      };
+
+      console.log(`Sending real-time test notification to ${postAuthor.username}:`, JSON.stringify(realtimeNotification, null, 2));
+      io.to(authorSocketId).emit("newNotification", realtimeNotification);
+      console.log(`Real-time notification sent successfully to ${postAuthor.username}`);
+    } else {
+      console.log(`Post author ${postAuthor.username} is not online, notification saved to database only`);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Test notification sent",
+      data: {
+        recipient: postAuthor.username,
+        socketConnected: !!authorSocketId,
+        dbNotificationId: dbNotification?._id
+      }
+    });
+  } catch (error) {
+    console.error("Error sending test notification:", error);
+    return next(createError(500, "Error sending test notification: " + error.message));
+  }
+};
+
+// Verify pickup code for self-pickup orders
+export const verifyPickupCode = async (req, res, next) => {
+  try {
+    const { orderId, pickupCode } = req.body;
+
+    if (!orderId || !pickupCode) {
+      return next(createError(400, "Order ID and pickup code are required"));
+    }
+
+    // Find the order
+    const order = await Order.findById(orderId)
+      .populate('user', 'username contactNumber')
+      .populate({
+        path: 'items.productId',
+        select: 'caption author image',
+        populate: {
+          path: 'author',
+          select: '_id username'
+        }
+      });
+
+    if (!order) {
+      return next(createError(404, "Order not found"));
+    }
+
+    // Check if this is a pickup order
+    if (order.deliveryMethod !== 'pickup') {
+      return next(createError(400, "This is not a pickup order"));
+    }
+
+    // Check if the pickup code matches
+    if (order.pickupCode !== pickupCode) {
+      console.log("❌ Pickup code mismatch:", { provided: pickupCode, stored: order.pickupCode });
+      return next(createError(400, `Invalid pickup code. Provided: ${pickupCode}, Expected: ${order.pickupCode} (Debug info for development)`));
+    }
+
+    // Check if the pickup code has expired
+    if (order.pickupCodeExpiresAt && new Date() > order.pickupCodeExpiresAt) {
+      return next(createError(400, "Pickup code has expired"));
+    }
+
+    // Check if pickup is already completed
+    if (order.isPickupCompleted) {
+      return next(createError(400, "Order has already been picked up"));
+    }
+
+    // Verify that the current user is one of the post authors for this order
+    const userIsAuthor = order.items.some(item => {
+      const authorId = item.productId?.author?._id?.toString();
+      const currentUserId = req.user.id.toString();
+      const isAuthor = item.productId && item.productId.author && authorId === currentUserId;
+      console.log(`📝 Checking item ${item.productId?._id}: author=${authorId}, currentUser=${currentUserId}, isAuthor=${isAuthor}`);
+      return isAuthor;
+    });
+
+    if (!userIsAuthor) {
+      return next(createError(403, "You are not authorized to complete this pickup"));
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Pickup code verified successfully",
+      order: {
+        _id: order._id,
+        customer: {
+          username: order.user.username,
+          contactNumber: order.user.contactNumber || order.contactNumber
+        },
+        items: order.items,
+        total: order.total,
+        createdAt: order.createdAt
+      }
+    });
+  } catch (error) {
+    console.error("Error verifying pickup code:", error);
+    return next(createError(500, "Error verifying pickup code: " + error.message));
+  }
+};
+
+// Complete pickup for self-pickup orders
+export const completePickup = async (req, res, next) => {
+  try {
+    console.log("🚗 === COMPLETE PICKUP ENDPOINT CALLED ===");
+    console.log("📋 Request body:", req.body);
+    console.log("👤 User:", req.user.username, req.user.id);
+    
+    const { orderId, pickupCode } = req.body;
+
+    if (!orderId || !pickupCode) {
+      console.log("❌ Missing required fields:", { orderId: !!orderId, pickupCode: !!pickupCode });
+      return next(createError(400, "Order ID and pickup code are required"));
+    }
+
+    console.log(`🔍 Looking for order: ${orderId} with pickup code: ${pickupCode}`);
+
+    // Find the order
+    const order = await Order.findById(orderId)
+      .populate('user', 'username profilePicture')
+      .populate({
+        path: 'items.productId',
+        select: 'caption author image',
+        populate: {
+          path: 'author',
+          select: '_id username'
+        }
+      });
+
+    if (!order) {
+      console.log("❌ Order not found in database");
+      return next(createError(404, "Order not found"));
+    }
+
+    console.log("✅ Order found:", {
+      id: order._id,
+      deliveryMethod: order.deliveryMethod,
+      status: order.status,
+      isPickupCompleted: order.isPickupCompleted,
+      storedPickupCode: order.pickupCode
+    });
+
+    // Check if this is a pickup order
+    if (order.deliveryMethod !== 'pickup') {
+      console.log("❌ Not a pickup order:", order.deliveryMethod);
+      return next(createError(400, "This is not a pickup order"));
+    }
+
+    // Check if the pickup code matches
+    if (order.pickupCode !== pickupCode) {
+      console.log("❌ Pickup code mismatch:", { provided: pickupCode, stored: order.pickupCode });
+      return next(createError(400, "Invalid pickup code"));
+    }
+
+    // Check if the pickup code has expired
+    if (order.pickupCodeExpiresAt && new Date() > order.pickupCodeExpiresAt) {
+      console.log("❌ Pickup code expired:", order.pickupCodeExpiresAt);
+      return next(createError(400, "Pickup code has expired"));
+    }
+
+    // Check if pickup is already completed
+    if (order.isPickupCompleted) {
+      console.log("❌ Order already picked up");
+      return next(createError(400, "Order has already been picked up"));
+    }
+
+    // Verify that the current user is one of the post authors for this order
+    console.log("🔐 Authorization check starting...");
+    console.log("📋 Current user ID:", req.user.id);
+    console.log("📦 Order items with authors:", order.items.map(item => ({
+      productId: item.productId?._id,
+      authorId: item.productId?.author?._id,
+      authorUsername: item.productId?.author?.username
+    })));
+    
+    const userIsAuthor = order.items.some(item => {
+      const authorId = item.productId?.author?._id?.toString();
+      const currentUserId = req.user.id.toString();
+      const isAuthor = item.productId && item.productId.author && authorId === currentUserId;
+      console.log(`📝 Checking item ${item.productId?._id}: author=${authorId}, currentUser=${currentUserId}, isAuthor=${isAuthor}`);
+      return isAuthor;
+    });
+
+    console.log("🔐 Final authorization result:", userIsAuthor);
+
+    if (!userIsAuthor) {
+      console.log("❌ User not authorized for this pickup");
+      return next(createError(403, "You are not authorized to complete this pickup"));
+    }
+
+    console.log("✅ All validations passed, updating order...");
+
+    // Update the order to mark pickup as completed
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      {
+        isPickupCompleted: true,
+        status: 'delivered',
+        actualDeliveryTime: new Date(),
+        $push: {
+          statusHistory: {
+            status: 'delivered',
+            timestamp: new Date(),
+            note: 'Order picked up by customer'
+          }
+        }
+      },
+      { new: true }
+    ).populate('user', 'username profilePicture').populate('items.productId', 'caption author image');
+
+    console.log("✅ Order updated successfully");
+
+    // Send notification to customer about successful pickup
+    try {
+      console.log("📩 Sending pickup completion notification to customer...");
+      const pickupNotificationMessage = `🎉 Your pickup order has been completed! Thank you for choosing us.`;
+      
+      const dbNotification = await createNotification(
+        req.user.id, // sender (post author)
+        order.user._id, // recipient (customer)
+        "order", // notification type
+        pickupNotificationMessage,
+        null, // no post reference
+        null, // no comment reference
+        order._id // order reference
+      );
+
+      console.log("✅ Database notification created:", dbNotification._id);
+
+      // Send real-time notification to customer
+      const customerSocketId = getReceiverSocketId(order.user._id.toString());
+      console.log("🔍 Customer socket status:", { customerId: order.user._id, socketId: customerSocketId });
+      
+      if (customerSocketId) {
+        const realtimeNotification = {
+          type: "order",
+          sender: {
+            _id: req.user.id,
+            username: req.user.username,
+            profilePicture: req.user.profilePicture
+          },
+          recipient: order.user._id,
+          order: {
+            _id: order._id,
+            status: 'delivered',
+            total: order.total,
+            deliveryMethod: 'pickup',
+            actualDeliveryTime: updatedOrder.actualDeliveryTime
+          },
+          message: pickupNotificationMessage,
+          createdAt: new Date().toISOString(),
+          read: false
+        };
+
+        console.log("📡 Sending real-time notification to customer:", order.user.username);
+        io.to(customerSocketId).emit("newNotification", realtimeNotification);
+        io.to(customerSocketId).emit("orderStatusUpdate", {
+          orderId: order._id,
+          status: 'delivered',
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.log("⚠️ Customer not connected to socket");
+      }
+    } catch (notificationError) {
+      console.error("⚠️ Failed to send pickup completion notification:", notificationError);
+      // Continue even if notification fails
+    }
+
+    console.log("🎉 Pickup completion successful! Sending response...");
+
+    return res.status(200).json({
+      success: true,
+      message: "Pickup completed successfully",
+      order: updatedOrder
+    });
+  } catch (error) {
+    console.error("❌ Error completing pickup:", error);
+    return next(createError(500, "Error completing pickup: " + error.message));
+  }
+};
+
+// Debug endpoint to check pickup code for an order (development only)
+export const getPickupCodeDebug = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return next(createError(400, "Order ID is required"));
+    }
+
+    // Find the order and populate product details including author
+    const order = await Order.findById(orderId)
+      .populate({
+        path: 'items.productId',
+        select: 'caption author image',
+        populate: {
+          path: 'author',
+          select: '_id username'
+        }
+      })
+      .populate('user', 'username profilePicture');
+
+    if (!order) {
+      return next(createError(404, "Order not found"));
+    }
+
+    // Return pickup code info for debugging with author information
+    return res.status(200).json({
+      success: true,
+      orderId: order._id,
+      pickupCode: order.pickupCode,
+      pickupCodeExpiresAt: order.pickupCodeExpiresAt,
+      deliveryMethod: order.deliveryMethod,
+      isPickupCompleted: order.isPickupCompleted,
+      status: order.status,
+      items: order.items.map(item => ({
+        productId: item.productId?._id,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        author: item.productId?.author?._id,
+        authorUsername: item.productId?.author?.username
+      })),
+      customer: {
+        _id: order.user?._id,
+        username: order.user?.username,
+        profilePicture: order.user?.profilePicture
+      }
+    });
+  } catch (error) {
+    console.error("Error getting pickup code debug info:", error);
+    return next(createError(500, "Error getting pickup code debug info: " + error.message));
   }
 }; 

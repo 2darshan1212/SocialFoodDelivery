@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { setAuthUser } from "../redux/authSlice";
 import { toast } from "react-toastify";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "https://socialfooddelivery-2.onrender.com";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 const useGetCurrentUser = () => {
   const dispatch = useDispatch();

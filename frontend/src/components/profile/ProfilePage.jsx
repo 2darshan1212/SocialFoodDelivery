@@ -3,8 +3,9 @@ import { Avatar, Button, CircularProgress } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import useGetUserProfile from "../../hooks/useGetUserProfile";
+import useFollowUser from "../../hooks/useFollowUser";
 import { Heart, MessageCircle } from "lucide-react";
-import { followOrUnfollow, getUserStats } from "../../redux/userSlice";
+import { getUserStats } from "../../redux/userSlice";
 import { toast } from "react-toastify";
 
 const ProfilePage = ({ userProfile }) => {
@@ -14,10 +15,17 @@ const ProfilePage = ({ userProfile }) => {
   useGetUserProfile(userId );
   const [activeTab, setActiveTab] = useState("posts");
   const { user } = useSelector((store) => store.auth);
-  const { followings = [], loading, error, lastAction, userStats = {} } = useSelector((store) => store.user);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const { userStats = {} } = useSelector((store) => store.user);
   
   const dispatch = useDispatch();
+  
+  // Use the new follow hook
+  const { 
+    toggleFollow, 
+    isFollowing, 
+    isProcessing, 
+    getFollowingStatus 
+  } = useFollowUser();
 
   const isLoggedInUserProfile = user?._id === userProfile?._id;
 
@@ -39,43 +47,27 @@ const ProfilePage = ({ userProfile }) => {
       dispatch(getUserStats(userProfile._id));
     }
   }, [userProfile?._id, dispatch]);
-  
-  // Handle error message 
-  useEffect(() => {
-    if (error) {
-      toast.error(error);
-    }
-  }, [error]);
-  
-  // Success feedback after follow/unfollow action
-  useEffect(() => {
-    if (lastAction && lastAction.timestamp && lastAction.userId) {
-      // Check if this is a recent action (within the last 2 seconds)
-      const isRecent = Date.now() - lastAction.timestamp < 2000;
-      
-      if (isRecent && lastAction.userId === userProfile?._id) {
-        // Re-fetch user stats after follow/unfollow
-        dispatch(getUserStats(userProfile._id));
-      }
-    }
-  }, [lastAction, userProfile, dispatch]);
 
-  const isFollowing = followings?.includes(userProfile?._id);
+  // Get current following status for this profile
+  const followingStatus = userProfile?._id ? getFollowingStatus(userProfile._id) : {
+    isFollowing: false,
+    isProcessing: false,
+    isLoading: false
+  };
+
   const stats = userProfile?._id && userStats ? userStats[userProfile._id] : null;
 
   const handleFollowClick = async () => {
-    if (!userProfile?._id) return;
+    if (!userProfile?._id || !userProfile?.username) {
+      toast.error("User profile not available");
+      return;
+    }
     
-    try {
-      setIsProcessing(true);
-      await dispatch(followOrUnfollow(userProfile._id)).unwrap();
-      
-      // Success handling is done in the effect above
-    } catch (err) {
-      console.error("Follow/unfollow action failed:", err);
-      // Error handling is done in the error effect
-    } finally {
-      setIsProcessing(false);
+    const result = await toggleFollow(userProfile._id, userProfile.username);
+    
+    if (result.success) {
+      // Refresh user stats after successful follow/unfollow
+      dispatch(getUserStats(userProfile._id));
     }
   };
 
@@ -129,17 +121,17 @@ const ProfilePage = ({ userProfile }) => {
                     Ad Tools
                   </Button>
                 </>
-              ) : isFollowing ? (
+              ) : followingStatus.isFollowing ? (
                 <>
                   <Button
                     onClick={handleFollowClick}
-                    disabled={isProcessing}
+                    disabled={followingStatus.isProcessing}
                     variant="contained"
                     color="secondary"
-                    startIcon={isProcessing ? <CircularProgress size={16} color="inherit" /> : null}
+                    startIcon={followingStatus.isProcessing ? <CircularProgress size={16} color="inherit" /> : null}
                     className="sm:w-auto mb-3"
                   >
-                    {isProcessing ? "Processing..." : "Unfollow"}
+                    {followingStatus.isProcessing ? "Processing..." : "Unfollow"}
                   </Button>
                   <Button
                     variant="contained"
@@ -152,13 +144,13 @@ const ProfilePage = ({ userProfile }) => {
               ) : (
                 <Button
                   onClick={handleFollowClick}
-                  disabled={isProcessing}
+                  disabled={followingStatus.isProcessing}
                   variant="contained"
                   color="primary"
-                  startIcon={isProcessing ? <CircularProgress size={16} color="inherit" /> : null}
+                  startIcon={followingStatus.isProcessing ? <CircularProgress size={16} color="inherit" /> : null}
                   className="sm:w-auto mb-3"
                 >
-                  {isProcessing ? "Processing..." : "Follow"}
+                  {followingStatus.isProcessing ? "Processing..." : "Follow"}
                 </Button>
               )}
             </div>

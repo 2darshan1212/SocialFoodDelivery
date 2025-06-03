@@ -135,6 +135,26 @@ const orderSchema = new mongoose.Schema(
         note: String,
       },
     ],
+    pickupCode: {
+      type: String,
+      validate: {
+        validator: function(v) {
+          // Only validate if deliveryMethod is pickup
+          if (this.deliveryMethod === 'pickup') {
+            return v && /^\d{4}$/.test(v);
+          }
+          return true;
+        },
+        message: 'Pickup code must be 4 digits'
+      }
+    },
+    pickupCodeExpiresAt: {
+      type: Date,
+    },
+    isPickupCompleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

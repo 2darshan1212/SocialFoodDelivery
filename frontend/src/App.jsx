@@ -101,7 +101,7 @@ const browserRouter = createBrowserRouter([
           {
             path: "post/:id",
             element: <PostDetail />
-          }
+          },
         ]
       },
       
@@ -381,8 +381,43 @@ const App = () => {
 
           // Handle all notification types with the same function
           const handleNotification = (notification) => {
-            console.log('Received notification:', notification);
+            console.log('=== SOCKET NOTIFICATION RECEIVED ===');
+            console.log('Raw notification data:', JSON.stringify(notification, null, 2));
+            console.log('Notification type:', notification.type);
+            console.log('Sender:', notification.sender);
+            console.log('Order data:', notification.order);
+            console.log('Post data:', notification.post);
+            console.log('=== DISPATCHING TO REDUX ===');
+            
+            // Special handling for pickup completion notifications
+            if (notification.type === 'order' && 
+                notification.order?.status === 'delivered' && 
+                notification.order?.deliveryMethod === 'pickup') {
+              console.log('🎉 Pickup completion notification received!');
+              
+              // Show special pickup completion toast
+              toast.success('🎉 Your pickup order has been completed! Thank you for choosing us.', {
+                position: "top-center",
+                autoClose: 8000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true
+              });
+              
+              // Update order status in cart slice if orderId is available
+              if (notification.order._id) {
+                dispatch(syncOrderStatus({
+                  orderId: notification.order._id,
+                  status: 'delivered',
+                  actualDeliveryTime: notification.order.actualDeliveryTime || new Date().toISOString()
+                }));
+              }
+            }
+            
             dispatch(addNotification(notification));
+            
+            console.log('Notification dispatched to Redux store');
           };
           
           // Register notification handlers
@@ -415,20 +450,34 @@ const App = () => {
               dispatch(syncOrderStatus({
                 orderId: orderUpdate.orderId,
                 status: orderUpdate.status,
-                paymentStatus: orderUpdate.paymentStatus
+                paymentStatus: orderUpdate.paymentStatus,
+                actualDeliveryTime: orderUpdate.timestamp
               }));
               
-              // Show notification for order updates with better formatting
+              // Special handling for pickup completion
+              if (orderUpdate.status === 'delivered') {
+                // Check if this might be a pickup order (we'll find out when the UI updates)
+                const orderId = orderUpdate.orderId.substring(0, 8);
+                toast.success(
+                  `🎉 Order #${orderId}... has been delivered!`,
+                  {
+                    position: "top-center",
+                    autoClose: 6000
+                  }
+                );
+              } else {
+                // Show notification for other order updates with better formatting
               const formattedStatus = orderUpdate.status.replace(/_/g, ' ').toUpperCase();
               const orderId = orderUpdate.orderId.substring(0, 8);
               
               toast.info(
-                `Order #${orderId}... status updated to ${formattedStatus}`,
+                  `📦 Order #${orderId}... status updated to ${formattedStatus}`,
                 {
                   position: "bottom-right",
                   autoClose: 5000
                 }
               );
+              }
             }
           });
         }

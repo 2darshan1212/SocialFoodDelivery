@@ -26,8 +26,18 @@ import {
   markAllNotificationsRead,
   markNotificationRead
 } from "../../redux/rtnSlice";
+import { 
+  setShowPickupModal,
+  setSelectedOrderId,
+  clearPickupState,
+  addPickupNotification,
+  setCurrentNotificationOrder,
+  fetchOrderDetails
+} from "../../redux/pickupSlice";
 import { setSelectedUser } from "../../redux/authSlice";
 import { toast } from "react-toastify";
+import OrderDetailsModal from '../OrderDetailsModal';
+import PickupOrderDetailsModal from '../pickup/PickupOrderDetailsModal';
 
 import { 
   Avatar, 
@@ -57,7 +67,11 @@ const Leftsidebar = () => {
   const { user } = useSelector((store) => store.auth);
   const { unreadCounts } = useSelector((store) => store.chat);
   const { posts } = useSelector((store) => store.post);
+  const { showPickupModal, selectedOrderId: pickupOrderId } = useSelector((store) => store.pickup);
   const isMobile = useMediaQuery('(max-width:768px)');
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [selectedOrderData, setSelectedOrderData] = useState(null);
   
   // Calculate total unread messages
   const totalUnreadMessages = unreadCounts ? 
@@ -106,6 +120,413 @@ const Leftsidebar = () => {
     if (!user?.bookmarks || !posts) return [];
     return posts.filter(post => user.bookmarks.includes(post._id));
   }, [user?.bookmarks, posts]);
+
+  const handleNotificationClick = (notification) => {
+    console.log("🔔 Notification clicked:", notification);
+    console.log("🔔 Notification type:", notification.type);
+    console.log("🔔 Full notification object:", JSON.stringify(notification, null, 2));
+    
+    // Close the notifications popover
+    setAnchorEl(null);
+    
+    // Mark notification as read if it has an ID
+    if (notification._id) {
+      dispatch(markNotificationRead(notification._id));
+    }
+    
+    // Navigate based on notification type
+    if (notification.type === 'like' || notification.type === 'comment') {
+      // Handle both formats - older socket notifications vs database notifications
+      const postId = notification.post || notification.postId;
+      if (postId) {
+        console.log(`Navigating to post: ${postId}`);
+        
+        // First navigate to the post
+        navigate(`/post/${postId}`);
+        
+        // Close the drawer after a short delay to ensure navigation starts
+        setTimeout(() => {
+          handleClose();
+        }, 300);
+      } else {
+        console.error("No post ID found in notification:", notification);
+        toast.error("Could not find the referenced post");
+      }
+    } else if (notification.type === 'follow') {
+      // Handle both formats
+      const senderId = notification.sender?._id || notification.sender || notification.userId;
+      if (senderId) {
+        console.log(`Navigating to profile: ${senderId}`);
+        
+        // First navigate to the profile
+        navigate(`/profile/${senderId}`);
+        
+        // Close the drawer after a short delay to ensure navigation starts
+        setTimeout(() => {
+          handleClose();
+        }, 300);
+      } else {
+        console.error("No sender ID found in notification:", notification);
+        toast.error("Could not find the referenced user");
+      }
+    } else if (notification.type === 'order') {
+      console.log("🛒 Processing order notification...");
+      
+      // Handle order notifications - check if it's a pickup order
+      // Handle both formats: object with _id or direct string ID
+      const orderId = typeof notification.order === 'string' 
+        ? notification.order 
+        : notification.order?._id || notification.orderId;
+      
+      const deliveryMethod = typeof notification.order === 'object' 
+        ? notification.order?.deliveryMethod 
+        : undefined;
+      
+      // Log notification data to debug pickup detection
+      console.log("🔍 Order notification received:", {
+        notification,
+        orderId,
+        deliveryMethod,
+        hasOrderObject: !!notification.order,
+        orderKeys: notification.order ? Object.keys(notification.order) : [],
+        orderType: typeof notification.order,
+        messageContent: notification.message
+      });
+      
+      // Multiple ways to detect pickup orders
+      const isPickupOrder = deliveryMethod === 'pickup' || 
+                           notification.message?.toLowerCase().includes('pickup') ||
+                           notification.message?.toLowerCase().includes('self-pickup');
+      
+      console.log("🚗 Is pickup order?", isPickupOrder);
+      console.log("🚗 Delivery method:", deliveryMethod);
+      console.log("🚗 Message includes 'pickup':", notification.message?.toLowerCase().includes('pickup'));
+      
+      if (orderId) {
+        console.log(`Opening ${isPickupOrder ? 'pickup' : 'regular'} order details for order: ${orderId}`);
+        
+        if (isPickupOrder) {
+          // For pickup orders, use Redux pickup slice
+          console.log("🚗 Setting up pickup modal with order data:", notification.order);
+          
+          // Add safety checks before dispatching
+          if (orderId && typeof orderId === 'string') {
+            console.log("🚗 Dispatching setSelectedOrderId:", orderId);
+            dispatch(setSelectedOrderId(orderId));
+          }
+          
+          // Only set current notification order if it's an object
+          if (notification.order && typeof notification.order === 'object') {
+            console.log("🚗 Dispatching setCurrentNotificationOrder:", notification.order);
+            dispatch(setCurrentNotificationOrder(notification.order));
+          }
+          
+          console.log("🚗 Dispatching setShowPickupModal(true)");
+          dispatch(setShowPickupModal(true));
+          
+          // Always fetch full order details from the API
+          console.log("🚗 Dispatching fetchOrderDetails:", orderId);
+          dispatch(fetchOrderDetails(orderId));
+          
+          // Add the notification to pickup notifications
+          console.log("🚗 Dispatching addPickupNotification");
+          dispatch(addPickupNotification(notification));
+          
+          console.log("🚗 Pickup modal setup complete!");
+        } else {
+          // For regular orders or when delivery method is unclear
+          console.log("📦 Setting up regular order modal or fetching details to determine type...");
+          dispatch(setSelectedOrderId(orderId));
+          dispatch(fetchOrderDetails(orderId)).then((result) => {
+            console.log("Order fetch result:", result);
+            if (result.payload && result.payload.deliveryMethod === 'pickup') {
+              console.log("🚗 Order confirmed as pickup, opening pickup modal");
+              dispatch(setCurrentNotificationOrder(result.payload));
+              dispatch(setShowPickupModal(true));
+              dispatch(addPickupNotification(notification));
+            } else {
+              console.log("📦 Order confirmed as regular delivery, opening regular modal");
+              setSelectedOrderData(result.payload || notification.order);
+        setOrderModalOpen(true);
+            }
+          }).catch((error) => {
+            console.error("Failed to fetch order details:", error);
+            // Fallback to regular modal
+            setSelectedOrderData(typeof notification.order === 'object' ? notification.order : null);
+            setOrderModalOpen(true);
+          });
+        }
+      } else {
+        console.error("No order ID found in notification:", notification);
+        toast.error("Could not find the referenced order");
+      }
+    } else {
+      console.warn("Unknown notification type:", notification.type);
+      toast.warning("This notification type is not supported yet");
+    }
+  };
+
+  const dispatch = useDispatch();
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [tabValue, setTabValue] = useState(0);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const buttonRef = useRef(null);
+  
+  const { 
+    notifications, 
+    realtimeNotifications, 
+    unseenCount,
+    loading 
+  } = useSelector((store) => store.realTimeNotification);
+  
+  const handleTabChange = (event, newValue) => {
+    setTabValue(newValue);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(null);
+    setIsDrawerOpen(false);
+  };
+
+  const handleMarkAllRead = () => {
+    dispatch(markAllNotificationsRead());
+    handleClose(); // Close the popover after marking all as read
+  };
+
+  const open = Boolean(anchorEl);
+  const id = open ? "notifications-popover" : undefined;
+
+  // Function to render a single notification
+  const renderNotification = (notification, index, context = '') => {
+    let content = '';
+    let icon = null;
+    let timestamp = notification.createdAt ? moment(notification.createdAt).fromNow() : 'just now';
+    
+    // Format content based on notification type
+    switch(notification.type) {
+      case 'like':
+        content = 'liked your post';
+        icon = <Heart size={16} className="text-red-500" />;
+        break;
+      case 'comment':
+        content = notification.message 
+          ? `commented: "${notification.message.substring(0, 20)}${notification.message.length > 20 ? '...' : ''}"`
+          : 'commented on your post';
+        icon = <MessageCircle size={16} className="text-blue-500" />;
+        break;
+      case 'follow':
+        content = 'started following you';
+        icon = <User size={16} className="text-green-500" />;
+        break;
+      case 'message':
+        // Message notifications should be handled in the conversations list
+        // but include handling here for any that might still appear
+        content = notification.message 
+          ? notification.message.includes('sent you a message') 
+            ? notification.message 
+            : `sent you a message: "${notification.message.substring(0, 20)}${notification.message.length > 20 ? '...' : ''}"`
+          : 'sent you a message';
+        icon = <MessageCircle size={16} className="text-purple-500" />;
+        break;
+      case 'order':
+        content = notification.message || 'placed an order from your post';
+        icon = <ShoppingCart size={16} className="text-orange-500" />;
+        break;
+      default:
+        content = notification.message || 'interacted with you';
+        icon = <Bell size={16} className="text-gray-500" />;
+    }
+    
+    // Get user information
+    const username = notification.sender?.username || 
+                     notification.userDetails?.username || 
+                     'Unknown user';
+    
+    const profilePic = notification.sender?.profilePicture || 
+                      notification.userDetails?.profilePicture;
+    
+    // Handle click with proper event handling
+    const handleItemClick = (e) => {
+      e.preventDefault();
+      e.stopPropagation(); // Prevent event bubbling
+      
+      // Use setTimeout to ensure the click ripple effect completes
+      setTimeout(() => {
+        handleNotificationClick(notification);
+      }, 150);
+    };
+    
+    // Create unique key by combining notification ID, context, and index
+    const uniqueKey = notification._id 
+      ? `${context}-${notification._id}` 
+      : `${context}-${notification.type}-${notification.sender?._id || 'unknown'}-${index}-${notification.createdAt || Date.now()}`;
+    
+    return (
+      <div
+        key={uniqueKey}
+        className={`flex gap-3 items-start p-4 hover:bg-gray-100 active:bg-gray-200 cursor-pointer transition-colors duration-150 ${
+          !notification.read ? 'bg-blue-50' : ''
+        }`}
+        onClick={handleItemClick}
+        role="button"
+        tabIndex={0}
+      >
+        <Avatar
+          alt={username}
+          src={profilePic}
+          sx={{ width: 42, height: 42 }}
+        />
+        <div className="flex-1 min-w-0"> {/* prevent overflow */}
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="font-bold text-sm mr-1">
+              {username}
+            </span>
+            <span className="text-xs text-gray-700 flex items-center gap-1 flex-wrap">
+              {icon} {content}
+            </span>
+          </div>
+          {notification.message && notification.type !== 'comment' && (
+            <p className="text-xs text-gray-600 mt-1 break-words">{notification.message}</p>
+          )}
+          <p className="text-xs text-gray-500 mt-1">
+            {timestamp}
+          </p>
+        </div>
+        {!notification.read && (
+          <div className="flex-shrink-0">
+            <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Remove duplicates and filter out message notifications
+  const removeDuplicates = (notificationList) => {
+    const uniqueMap = new Map();
+    notificationList.forEach(notification => {
+      const key = notification._id || `${notification.type}-${notification.sender?._id}-${notification.createdAt}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, notification);
+      }
+    });
+    return Array.from(uniqueMap.values());
+  };
+
+  const allNotifications = removeDuplicates([
+    ...(Array.isArray(notifications) ? notifications : []), 
+    ...(Array.isArray(realtimeNotifications) ? realtimeNotifications : [])
+  ])
+  .filter(notification => notification.type !== 'message') // Filter out message notifications
+  .sort((a, b) => new Date(b.createdAt || Date.now()) - new Date(a.createdAt || Date.now()));
+
+  // Filter by type for the other tabs
+  const followNotifications = allNotifications.filter(n => n.type === 'follow');
+  const likeNotifications = allNotifications.filter(n => n.type === 'like');
+  const commentNotifications = allNotifications.filter(n => n.type === 'comment');
+  const orderNotifications = allNotifications.filter(n => n.type === 'order');
+
+  // Notification tab panel content
+  const NotificationTabsContent = () => (
+    <Box sx={{ width: '100%' }}>
+      <Tabs value={tabValue} onChange={handleTabChange} variant="fullWidth" sx={{ mb: 2 }}>
+        <Tab 
+          label={
+            <Badge badgeContent={allNotifications.length} color="primary" max={99}>
+              All
+            </Badge>
+          } 
+        />
+        <Tab 
+          label={
+            <Badge badgeContent={followNotifications.length} color="secondary" max={99}>
+              Follows
+            </Badge>
+          } 
+        />
+        <Tab 
+          label={
+            <Badge badgeContent={likeNotifications.length} color="error" max={99}>
+              Likes
+            </Badge>
+          } 
+        />
+        <Tab 
+          label={
+            <Badge badgeContent={commentNotifications.length} color="warning" max={99}>
+              Comments
+            </Badge>
+          } 
+        />
+        <Tab 
+          label={
+            <Badge badgeContent={orderNotifications.length} color="success" max={99}>
+              Orders
+            </Badge>
+          } 
+        />
+      </Tabs>
+
+      {/* Tab Panels */}
+      <Box sx={{ overflowY: 'auto', maxHeight: isMobile ? '60vh' : '300px' }}>
+        {tabValue === 0 && (
+          <div>
+            {allNotifications.length === 0 ? (
+              <p className="p-4 text-sm text-gray-600 text-center">
+                No notifications
+              </p>
+            ) : (
+              allNotifications.map((notification, index) => renderNotification(notification, index, 'all'))
+            )}
+          </div>
+        )}
+        {tabValue === 1 && (
+          <div>
+            {followNotifications.length === 0 ? (
+              <p className="p-4 text-sm text-gray-600 text-center">
+                No follow notifications
+              </p>
+            ) : (
+              followNotifications.map((notification, index) => renderNotification(notification, index, 'follow'))
+            )}
+          </div>
+        )}
+        {tabValue === 2 && (
+          <div>
+            {likeNotifications.length === 0 ? (
+              <p className="p-4 text-sm text-gray-600 text-center">
+                No like notifications
+              </p>
+            ) : (
+              likeNotifications.map((notification, index) => renderNotification(notification, index, 'like'))
+            )}
+          </div>
+        )}
+        {tabValue === 3 && (
+          <div>
+            {commentNotifications.length === 0 ? (
+              <p className="p-4 text-sm text-gray-600 text-center">
+                No comment notifications
+              </p>
+            ) : (
+              commentNotifications.map((notification, index) => renderNotification(notification, index, 'comment'))
+            )}
+          </div>
+        )}
+        {tabValue === 4 && (
+          <div>
+            {orderNotifications.length === 0 ? (
+              <p className="p-4 text-sm text-gray-600 text-center">
+                No order notifications
+              </p>
+            ) : (
+              orderNotifications.map((notification, index) => renderNotification(notification, index, 'order'))
+            )}
+          </div>
+        )}
+      </Box>
+    </Box>
+  );
 
   return (
     <nav className="flex md:flex-col relative items-center md:items-start gap-4 w-full border-r-1 h-full max-sm:border-hidden sm:p-4">
@@ -211,6 +632,28 @@ const Leftsidebar = () => {
           </Box>
         </SwipeableDrawer>
       )}
+      
+      {/* Order Details Modal */}
+      <OrderDetailsModal
+        open={orderModalOpen}
+        onClose={() => {
+          setOrderModalOpen(false);
+          setSelectedOrderId(null);
+          setSelectedOrderData(null);
+        }}
+        orderId={selectedOrderId}
+        orderData={selectedOrderData}
+      />
+      
+      {/* Pickup Order Details Modal */}
+      <PickupOrderDetailsModal
+        open={showPickupModal}
+        onClose={() => {
+          dispatch(clearPickupState());
+          setSelectedOrderId(null);
+          setSelectedOrderData(null);
+        }}
+      />
     </nav>
   );
 };
@@ -242,6 +685,9 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
   const [anchorEl, setAnchorEl] = useState(null);
   const [tabValue, setTabValue] = useState(0);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [selectedOrderData, setSelectedOrderData] = useState(null);
   const isMobile = useMediaQuery('(max-width:768px)');
   const buttonRef = useRef(null);
   
@@ -251,6 +697,8 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
     unseenCount,
     loading 
   } = useSelector((store) => store.realTimeNotification);
+  
+  const { showPickupModal } = useSelector((store) => store.pickup);
   
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -285,11 +733,18 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
   };
 
   const handleNotificationClick = (notification) => {
-    // If notification has an _id, mark it as read
-    if (notification._id && !notification.read) {
+    console.log("🔔 Notification clicked:", notification);
+    console.log("🔔 Notification type:", notification.type);
+    console.log("🔔 Full notification object:", JSON.stringify(notification, null, 2));
+    
+    // Close the notifications popover
+    setAnchorEl(null);
+    
+    // Mark notification as read if it has an ID
+    if (notification._id) {
       dispatch(markNotificationRead(notification._id));
     }
-
+    
     // Navigate based on notification type
     if (notification.type === 'like' || notification.type === 'comment') {
       // Handle both formats - older socket notifications vs database notifications
@@ -325,6 +780,97 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
         console.error("No sender ID found in notification:", notification);
         toast.error("Could not find the referenced user");
       }
+    } else if (notification.type === 'order') {
+      console.log("🛒 Processing order notification...");
+      
+      // Handle order notifications - check if it's a pickup order
+      // Handle both formats: object with _id or direct string ID
+      const orderId = typeof notification.order === 'string' 
+        ? notification.order 
+        : notification.order?._id || notification.orderId;
+      
+      const deliveryMethod = typeof notification.order === 'object' 
+        ? notification.order?.deliveryMethod 
+        : undefined;
+      
+      // Log notification data to debug pickup detection
+      console.log("🔍 Order notification received:", {
+        notification,
+        orderId,
+        deliveryMethod,
+        hasOrderObject: !!notification.order,
+        orderKeys: notification.order ? Object.keys(notification.order) : [],
+        orderType: typeof notification.order,
+        messageContent: notification.message
+      });
+      
+      // Multiple ways to detect pickup orders
+      const isPickupOrder = deliveryMethod === 'pickup' || 
+                           notification.message?.toLowerCase().includes('pickup') ||
+                           notification.message?.toLowerCase().includes('self-pickup');
+      
+      console.log("🚗 Is pickup order?", isPickupOrder);
+      console.log("🚗 Delivery method:", deliveryMethod);
+      console.log("🚗 Message includes 'pickup':", notification.message?.toLowerCase().includes('pickup'));
+      
+      if (orderId) {
+        console.log(`Opening ${isPickupOrder ? 'pickup' : 'regular'} order details for order: ${orderId}`);
+        
+        if (isPickupOrder) {
+          // For pickup orders, use Redux pickup slice
+          console.log("🚗 Setting up pickup modal with order data:", notification.order);
+          
+          // Add safety checks before dispatching
+          if (orderId && typeof orderId === 'string') {
+            console.log("🚗 Dispatching setSelectedOrderId:", orderId);
+            dispatch(setSelectedOrderId(orderId));
+          }
+          
+          // Only set current notification order if it's an object
+          if (notification.order && typeof notification.order === 'object') {
+            console.log("🚗 Dispatching setCurrentNotificationOrder:", notification.order);
+            dispatch(setCurrentNotificationOrder(notification.order));
+          }
+          
+          console.log("🚗 Dispatching setShowPickupModal(true)");
+          dispatch(setShowPickupModal(true));
+          
+          // Always fetch full order details from the API
+          console.log("🚗 Dispatching fetchOrderDetails:", orderId);
+          dispatch(fetchOrderDetails(orderId));
+          
+          // Add the notification to pickup notifications
+          console.log("🚗 Dispatching addPickupNotification");
+          dispatch(addPickupNotification(notification));
+          
+          console.log("🚗 Pickup modal setup complete!");
+        } else {
+          // For regular orders or when delivery method is unclear
+          console.log("📦 Setting up regular order modal or fetching details to determine type...");
+          dispatch(setSelectedOrderId(orderId));
+          dispatch(fetchOrderDetails(orderId)).then((result) => {
+            console.log("Order fetch result:", result);
+            if (result.payload && result.payload.deliveryMethod === 'pickup') {
+              console.log("🚗 Order confirmed as pickup, opening pickup modal");
+              dispatch(setCurrentNotificationOrder(result.payload));
+              dispatch(setShowPickupModal(true));
+              dispatch(addPickupNotification(notification));
+            } else {
+              console.log("📦 Order confirmed as regular delivery, opening regular modal");
+              setSelectedOrderData(result.payload || notification.order);
+        setOrderModalOpen(true);
+            }
+          }).catch((error) => {
+            console.error("Failed to fetch order details:", error);
+            // Fallback to regular modal
+            setSelectedOrderData(typeof notification.order === 'object' ? notification.order : null);
+            setOrderModalOpen(true);
+          });
+        }
+      } else {
+        console.error("No order ID found in notification:", notification);
+        toast.error("Could not find the referenced order");
+      }
     } else {
       console.warn("Unknown notification type:", notification.type);
       toast.warning("This notification type is not supported yet");
@@ -340,7 +886,7 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
   const id = open ? "notifications-popover" : undefined;
 
   // Function to render a single notification
-  const renderNotification = (notification, index) => {
+  const renderNotification = (notification, index, context = '') => {
     let content = '';
     let icon = null;
     let timestamp = notification.createdAt ? moment(notification.createdAt).fromNow() : 'just now';
@@ -371,6 +917,10 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
           : 'sent you a message';
         icon = <MessageCircle size={16} className="text-purple-500" />;
         break;
+      case 'order':
+        content = notification.message || 'placed an order from your post';
+        icon = <ShoppingCart size={16} className="text-orange-500" />;
+        break;
       default:
         content = notification.message || 'interacted with you';
         icon = <Bell size={16} className="text-gray-500" />;
@@ -395,9 +945,14 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
       }, 150);
     };
     
+    // Create unique key by combining notification ID, context, and index
+    const uniqueKey = notification._id 
+      ? `${context}-${notification._id}` 
+      : `${context}-${notification.type}-${notification.sender?._id || 'unknown'}-${index}-${notification.createdAt || Date.now()}`;
+    
     return (
       <div
-        key={notification._id ? notification._id : `notification-${index}`}
+        key={uniqueKey}
         className={`flex gap-3 items-start p-4 hover:bg-gray-100 active:bg-gray-200 cursor-pointer transition-colors duration-150 ${
           !notification.read ? 'bg-blue-50' : ''
         }`}
@@ -435,11 +990,22 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
     );
   };
 
-  // Filter out message notifications from the allNotifications array
-  const allNotifications = [
+  // Remove duplicates and filter out message notifications
+  const removeDuplicates = (notificationList) => {
+    const uniqueMap = new Map();
+    notificationList.forEach(notification => {
+      const key = notification._id || `${notification.type}-${notification.sender?._id}-${notification.createdAt}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, notification);
+      }
+    });
+    return Array.from(uniqueMap.values());
+  };
+
+  const allNotifications = removeDuplicates([
     ...(Array.isArray(notifications) ? notifications : []), 
     ...(Array.isArray(realtimeNotifications) ? realtimeNotifications : [])
-  ]
+  ])
   .filter(notification => notification.type !== 'message') // Filter out message notifications
   .sort((a, b) => new Date(b.createdAt || Date.now()) - new Date(a.createdAt || Date.now()));
 
@@ -447,88 +1013,112 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
   const followNotifications = allNotifications.filter(n => n.type === 'follow');
   const likeNotifications = allNotifications.filter(n => n.type === 'like');
   const commentNotifications = allNotifications.filter(n => n.type === 'comment');
+  const orderNotifications = allNotifications.filter(n => n.type === 'order');
 
   // Notification tab panel content
   const NotificationTabsContent = () => (
-    <>
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1, bgcolor: 'white', position: 'sticky', top: 0, zIndex: 1 }}>
-        <Tabs 
-          value={tabValue} 
-          onChange={handleTabChange} 
-          variant="scrollable"
-          scrollButtons="auto"
-          aria-label="notification tabs"
-        >
-          <Tab label="All" />
-          <Tab label="Follows" />
-          <Tab label="Likes" />
-          <Tab label="Comments" />
-        </Tabs>
-        <IconButton 
-          size="small" 
-          onClick={(e) => {
-            e.stopPropagation(); // Prevent bubbling
-            handleMarkAllRead();
-          }} 
-          title="Mark all as read"
-          color="primary"
-          className="hover:bg-blue-100"
-        >
-          <Check size={16} />
-        </IconButton>
-      </Box>
-      
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-          <CircularProgress size={24} />
-        </Box>
-      ) : (
-        <>
-          <TabPanel value={tabValue} index={0}>
+    <Box sx={{ width: '100%' }}>
+      <Tabs value={tabValue} onChange={handleTabChange} variant="fullWidth" sx={{ mb: 2 }}>
+        <Tab 
+          label={
+            <Badge badgeContent={allNotifications.length} color="primary" max={99}>
+              All
+            </Badge>
+          } 
+        />
+        <Tab 
+          label={
+            <Badge badgeContent={followNotifications.length} color="secondary" max={99}>
+              Follows
+            </Badge>
+          } 
+        />
+        <Tab 
+          label={
+            <Badge badgeContent={likeNotifications.length} color="error" max={99}>
+              Likes
+            </Badge>
+          } 
+        />
+        <Tab 
+          label={
+            <Badge badgeContent={commentNotifications.length} color="warning" max={99}>
+              Comments
+            </Badge>
+          } 
+        />
+        <Tab 
+          label={
+            <Badge badgeContent={orderNotifications.length} color="success" max={99}>
+              Orders
+            </Badge>
+          } 
+        />
+      </Tabs>
+
+      {/* Tab Panels */}
+      <Box sx={{ overflowY: 'auto', maxHeight: isMobile ? '60vh' : '300px' }}>
+        {tabValue === 0 && (
+          <div>
             {allNotifications.length === 0 ? (
               <p className="p-4 text-sm text-gray-600 text-center">
                 No notifications
               </p>
             ) : (
-              allNotifications.map((notification, index) => renderNotification(notification, `all-${index}`))
+              allNotifications.map((notification, index) => renderNotification(notification, index, 'all'))
             )}
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={1}>
+          </div>
+        )}
+        {tabValue === 1 && (
+          <div>
             {followNotifications.length === 0 ? (
               <p className="p-4 text-sm text-gray-600 text-center">
                 No follow notifications
               </p>
             ) : (
-              followNotifications.map((notification, index) => renderNotification(notification, `follow-${index}`))
+              followNotifications.map((notification, index) => renderNotification(notification, index, 'follow'))
             )}
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={2}>
+          </div>
+        )}
+        {tabValue === 2 && (
+          <div>
             {likeNotifications.length === 0 ? (
               <p className="p-4 text-sm text-gray-600 text-center">
                 No like notifications
               </p>
             ) : (
-              likeNotifications.map((notification, index) => renderNotification(notification, `like-${index}`))
+              likeNotifications.map((notification, index) => renderNotification(notification, index, 'like'))
             )}
-          </TabPanel>
-          
-          <TabPanel value={tabValue} index={3}>
+          </div>
+        )}
+        {tabValue === 3 && (
+          <div>
             {commentNotifications.length === 0 ? (
               <p className="p-4 text-sm text-gray-600 text-center">
                 No comment notifications
               </p>
             ) : (
-              commentNotifications.map((notification, index) => renderNotification(notification, `comment-${index}`))
+              commentNotifications.map((notification, index) => renderNotification(notification, index, 'comment'))
             )}
-          </TabPanel>
-        </>
-      )}
-    </>
+          </div>
+        )}
+        {tabValue === 4 && (
+          <div>
+            {orderNotifications.length === 0 ? (
+              <p className="p-4 text-sm text-gray-600 text-center">
+                No order notifications
+              </p>
+            ) : (
+              orderNotifications.map((notification, index) => renderNotification(notification, index, 'order'))
+            )}
+          </div>
+        )}
+      </Box>
+    </Box>
   );
 
   return (
+    <>
     <div
       ref={buttonRef}
       onClick={(event) => {
@@ -661,6 +1251,29 @@ const SidebarItem = ({ icon, label, badgeCount, sidebarHandler, active = false }
         </>
       )}
     </div>
+      
+      {/* Order Details Modal */}
+      <OrderDetailsModal
+        open={orderModalOpen}
+        onClose={() => {
+          setOrderModalOpen(false);
+          setSelectedOrderId(null);
+          setSelectedOrderData(null);
+        }}
+        orderId={selectedOrderId}
+        orderData={selectedOrderData}
+      />
+      
+      {/* Pickup Order Details Modal */}
+      <PickupOrderDetailsModal
+        open={showPickupModal}
+        onClose={() => {
+          dispatch(clearPickupState());
+          setSelectedOrderId(null);
+          setSelectedOrderData(null);
+        }}
+      />
+    </>
   );
 };
 

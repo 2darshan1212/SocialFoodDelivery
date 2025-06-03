@@ -2,16 +2,37 @@ import React, { useState, useEffect } from "react";
 import { Avatar, Tooltip, CircularProgress } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
-import { followOrUnfollow, getUserStats } from "../../redux/userSlice";
+import useFollowUser from "../../hooks/useFollowUser";
+import { getUserStats } from "../../redux/userSlice";
 import { toast } from "react-toastify";
 
 const SuggestedUsers = ({ isConversationTab = false, onMessageClick }) => {
   const { suggestedUsers } = useSelector((store) => store.auth);
-  const { followings, loading, error, lastAction, userStats = {} } = useSelector((state) => state.user);
+  const { userStats = {} } = useSelector((state) => state.user);
+  const { user } = useSelector((store) => store.auth);
+  const userReduxState = useSelector((state) => state.user);
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const [processingUserId, setProcessingUserId] = useState(null);
   const [showAll, setShowAll] = useState(false);
+  
+  // Use the new follow hook
+  const { 
+    toggleFollow, 
+    isFollowing, 
+    isProcessing, 
+    getFollowingStatus,
+    followings 
+  } = useFollowUser();
+
+  // Debug logging
+  useEffect(() => {
+    console.log("🔍 SuggestedUsers Debug:");
+    console.log("Current user:", user);
+    console.log("Suggested users:", suggestedUsers);
+    console.log("Followings from hook:", followings);
+    console.log("Full user Redux state:", userReduxState);
+    console.log("User stats:", userStats);
+  }, [user, suggestedUsers, followings, userReduxState, userStats]);
 
   // Fetch stats for all users when component mounts
   useEffect(() => {
@@ -24,44 +45,26 @@ const SuggestedUsers = ({ isConversationTab = false, onMessageClick }) => {
     }
   }, [suggestedUsers, dispatch]);
 
-  // Handle error message 
-  useEffect(() => {
-    if (error) {
-      toast.error(error);
+  const handleFollowClick = async (user) => {
+    if (!user?._id || !user?.username) {
+      toast.error("Invalid user");
+      return;
     }
-  }, [error]);
-
-  // Success feedback after follow/unfollow action
-  useEffect(() => {
-    if (lastAction && lastAction.timestamp) {
-      // Check if this is a recent action (within the last 2 seconds)
-      const isRecent = Date.now() - lastAction.timestamp < 2000;
-      
-      if (isRecent && lastAction.userId) {
-        const targetUserId = lastAction.userId;
-        const targetUser = suggestedUsers?.find(user => user?._id === targetUserId);
-        
-        if (targetUser) {
-          // Re-fetch user stats after follow/unfollow
-          dispatch(getUserStats(targetUserId));
-        }
-      }
-    }
-  }, [lastAction, suggestedUsers, dispatch]);
-
-  const handleFollowClick = async (userId) => {
-    if (!userId) return;
     
-    try {
-      setProcessingUserId(userId);
-      await dispatch(followOrUnfollow(userId)).unwrap();
-      
-      // Success handling is done in the effect above
-    } catch (error) {
-      console.error("Follow action failed:", error);
-      // Error handling is done in the effect above
-    } finally {
-      setProcessingUserId(null);
+    console.log("🎯 Follow button clicked for:", {
+      userId: user._id,
+      username: user.username,
+      currentlyFollowing: isFollowing(user._id),
+      isProcessing: isProcessing(user._id)
+    });
+    
+    const result = await toggleFollow(user._id, user.username);
+    
+    console.log("✅ Toggle follow result:", result);
+    
+    if (result.success) {
+      // Refresh user stats after successful follow/unfollow
+      dispatch(getUserStats(user._id));
     }
   };
 
@@ -90,14 +93,13 @@ const SuggestedUsers = ({ isConversationTab = false, onMessageClick }) => {
         {usersToShow.map((user) => {
           if (!user || !user._id) return null;
           
-          const isFollowing = followings?.includes(user._id);
-          const isProcessing = processingUserId === user._id;
+          // Get following status for this user
+          const followingStatus = getFollowingStatus(user._id);
           const stats = userStats && userStats[user._id];
 
           return (
             <div
               key={user._id}
-              
               className="flex items-center justify-between p-1 hover:bg-gray-50 rounded-md transition"
             >
               <div className="flex items-center gap-3" >
@@ -145,21 +147,21 @@ const SuggestedUsers = ({ isConversationTab = false, onMessageClick }) => {
                   </p>
                 </Tooltip>
               ) : (
-                <Tooltip title={isFollowing ? "Unfollow" : "Follow"}>
+                <Tooltip title={followingStatus.isFollowing ? "Unfollow" : "Follow"}>
                   <p
-                    onClick={() => handleFollowClick(user._id)}
-                    disabled={isProcessing || loading}
+                    onClick={() => handleFollowClick(user)}
                     className={`px-4 py-2 cursor-pointer mr-1 rounded-sm mx-[-2rem] text-sm font-medium transition duration-200 ${
-                      isProcessing 
+                      followingStatus.isProcessing 
                         ? "bg-gray-200 text-gray-500"
-                        : isFollowing
+                        : followingStatus.isFollowing
                         ? "bg-gray-300 text-black hover:bg-gray-400"
                         : "bg-blue-600 text-white hover:bg-blue-700"
                     }`}
+                    style={{ pointerEvents: followingStatus.isProcessing ? 'none' : 'auto' }}
                   >
-                    {isProcessing ? (
+                    {followingStatus.isProcessing ? (
                       <CircularProgress size={16} color="inherit" />
-                    ) : isFollowing ? (
+                    ) : followingStatus.isFollowing ? (
                       "Unfollow"
                     ) : (
                       "Follow"

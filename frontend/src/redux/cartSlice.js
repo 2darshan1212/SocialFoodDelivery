@@ -43,14 +43,24 @@ export const placeOrder = createAsyncThunk(
         delivery: deliveryCoordinates
       });
       
+      // Generate OTP for pickup orders
+      let pickupOTP = null;
+      if (orderData.deliveryMethod === 'pickup') {
+        pickupOTP = Math.floor(1000 + Math.random() * 9000).toString();
+        console.log("Generated pickup OTP:", pickupOTP);
+      }
+      
       // Construct enhanced order data with EXPLICIT coordinates
       // Set status to "confirmed" immediately for cash on delivery orders
       const isCashOnDelivery = orderData.paymentMethod === "cash";
+      const isPickupOrder = orderData.deliveryMethod === "pickup";
       
       const enhancedOrderData = {
         ...orderData,
         // Set status to confirmed for cash on delivery orders
         status: isCashOnDelivery ? "confirmed" : "processing",
+        isPickupOrder,
+        pickupOTP,
         pickupLocation: {
           type: "Point",
           coordinates: pickupCoordinates // Use explicit coordinates
@@ -68,7 +78,9 @@ export const placeOrder = createAsyncThunk(
       
       console.log("Sending order with EXPLICIT coordinates:", {
         pickup: enhancedOrderData.pickupLocation.coordinates,
-        delivery: enhancedOrderData.deliveryLocation.coordinates
+        delivery: enhancedOrderData.deliveryLocation.coordinates,
+        isPickup: isPickupOrder,
+        otp: pickupOTP
       });
       
       const response = await createNewOrder(enhancedOrderData);
@@ -81,6 +93,8 @@ export const placeOrder = createAsyncThunk(
           // Ensure the status is maintained from the response
           // For cash on delivery, this should be "confirmed"
           status: response.order.status || (isCashOnDelivery ? "confirmed" : "processing"),
+          isPickupOrder,
+          pickupOTP,
           pickupLocation: {
             type: "Point",
             coordinates: pickupCoordinates // Use the explicit coordinates directly
@@ -108,7 +122,9 @@ export const placeOrder = createAsyncThunk(
         console.log("Dispatching order to admin WITH EXPLICIT coordinates:", {
           orderId: adminOrder._id,
           pickupCoordinates: adminOrder.pickupLocation.coordinates,
-          deliveryCoordinates: adminOrder.deliveryLocation.coordinates
+          deliveryCoordinates: adminOrder.deliveryLocation.coordinates,
+          isPickup: isPickupOrder,
+          otp: pickupOTP
         });
         
         dispatch(receiveNewOrder(adminOrder));
@@ -260,6 +276,9 @@ const cartSlice = createSlice({
     orderError: null,
     currentOrderId: null,
     stockErrors: {},
+    // Pickup order specific state
+    currentPickupOrder: null,
+    showPickupScreen: false,
   },
   reducers: {
     // Location management for orders
@@ -667,6 +686,18 @@ const cartSlice = createSlice({
       // Also clear legacy cart for compatibility
       state.cartItems = [];
       state.stockErrors = {};
+      
+      // Reset checkout state
+      state.checkout = {
+        deliveryAddress: "",
+        deliveryMethod: "standard",
+        paymentMethod: "cash",
+        deliveryInstructions: "",
+        contactNumber: "",
+        appliedPromoCode: null,
+        discount: 0,
+        deliveryFee: 0,
+      };
     },
 
     // Checkout related reducers
@@ -679,16 +710,16 @@ const cartSlice = createSlice({
       // Update delivery fee based on method
       switch (action.payload) {
         case "express":
-          state.checkout.deliveryFee = 50; // Express delivery fee
+          state.checkout.deliveryFee = 99; // Express delivery fee
           break;
         case "standard":
-          state.checkout.deliveryFee = 20; // Standard delivery fee
+          state.checkout.deliveryFee = 49; // Standard delivery fee
           break;
         case "pickup":
           state.checkout.deliveryFee = 0; // No fee for pickup
           break;
         default:
-          state.checkout.deliveryFee = 20; // Default to standard
+          state.checkout.deliveryFee = 49; // Default to standard
       }
     },
 
@@ -789,6 +820,21 @@ const cartSlice = createSlice({
           `Order ${orderId} not found in user's order history. Cannot sync status.`
         );
       }
+    },
+
+    // Pickup order specific reducers
+    setCurrentPickupOrder: (state, action) => {
+      state.currentPickupOrder = action.payload;
+      state.showPickupScreen = true;
+    },
+
+    clearPickupOrder: (state) => {
+      state.currentPickupOrder = null;
+      state.showPickupScreen = false;
+    },
+
+    setShowPickupScreen: (state, action) => {
+      state.showPickupScreen = action.payload;
     },
   },
   extraReducers: (builder) => {
@@ -923,6 +969,9 @@ export const {
   setPickupPoint,
   setDeliveryPoint,
   resetLocationPoints,
+  setCurrentPickupOrder,
+  clearPickupOrder,
+  setShowPickupScreen,
 } = cartSlice.actions;
 
 // Export the reset order status action separately

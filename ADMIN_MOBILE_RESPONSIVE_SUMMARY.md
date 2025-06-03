@@ -366,4 +366,59 @@ All pages in the social food delivery application now share the same consistent 
 
 This fixes both reported issues:
 ✅ **Profile button in left sidebar now works properly**
-✅ **Profile picture displays correctly in header after login** 
+✅ **Profile picture displays correctly in header after login**
+
+## 16. 🔧 COMPREHENSIVE: Follow/Unfollow Redux Functionality Fixes
+
+### ISSUE RESOLVED: Redux State Management Problems
+- **Problem**: Follow/unfollow functionality was not working correctly due to Redux state management issues
+- **Root Cause**: Incomplete extraReducers, unpersisted state, lack of optimistic updates, and poor error handling
+- **Solution**: Complete Redux architecture overhaul with modern patterns
+
+### Redux Store Configuration Improvements
+- **User Slice Persistence**: Added proper Redux Persist configuration for user slice
+- **Selective Persistence**: Only persist `followings` and `userStats`, exclude transient states
+- **Enhanced Store Setup**: Proper middleware configuration with logging and persistence
+
+### Completely Rewritten userSlice.js
+- **Enhanced Async Thunks**: Improved error handling and logging for all async operations
+- **Robust State Management**: Proper initial state, reducers, and extraReducers
+- **Optimistic Updates**: Built-in support for immediate UI feedback
+- **Comprehensive Logging**: Detailed console logging for debugging follow/unfollow operations
+- **State Selectors**: Exported selectors for easier state access across components
+
+### New useFollowUser Hook
+- **Centralized Logic**: Single hook to manage all follow/unfollow operations
+- **Optimistic Updates**: Immediate UI feedback with proper error rollback
+- **Smart Processing**: Prevents multiple simultaneous requests per user
+- **User Validation**: Comprehensive validation and error handling
+- **Toast Integration**: Automatic success/error notifications
+
+### Enhanced Component Integration
+- **ProfilePage.jsx**: Complete integration with new hook and Redux patterns
+- **SuggestedUsers.jsx**: Simplified and more reliable follow/unfollow logic
+- **useFollowingsManager.jsx**: Ensures followings are loaded and refreshed properly
+
+### Key Technical Improvements:
+1. **Proper State Persistence**: User followings survive app restarts
+2. **Optimistic Updates**: Immediate UI feedback for better UX
+3. **Error Recovery**: Automatic state rollback on API failures
+4. **Duplicate Prevention**: Smart handling of multiple concurrent requests
+5. **Comprehensive Logging**: Full debugging support with emojis for easy identification
+6. **Type Safety**: Better state structure with proper validation
+
+### Benefits Achieved:
+✅ **Reliable Follow/Unfollow**: State updates work correctly every time
+✅ **Instant UI Feedback**: No more waiting for server responses
+✅ **Error Resilience**: Graceful handling of network failures
+✅ **Persistent State**: Followings maintained across app sessions
+✅ **Better UX**: Clear feedback and loading states
+✅ **Debugging Support**: Comprehensive logging for troubleshooting
+
+### API Integration:
+- **Enhanced Authorization**: Proper token handling in all requests
+- **Server State Sync**: Automatic synchronization with backend
+- **Real-time Updates**: Immediate reflection of follow/unfollow actions
+- **Stats Refresh**: Automatic user statistics updates after actions
+
+This comprehensive fix ensures that the follow/unfollow functionality is now **fully functional with Redux** and provides a seamless user experience across all components. 

@@ -1,16 +1,15 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
-import axios from "axios";
+import axiosInstance from "../utils/axiosInstance";
+import { toast } from "react-toastify";
+import { addPickupNotification } from './pickupSlice';
 
-// Async thunk for fetching notifications from the server
+// Async thunk for fetching notifications
 export const fetchNotifications = createAsyncThunk(
   "notifications/fetchNotifications",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get(
-        "https://socialfooddelivery-2.onrender.com/api/v1/notifications",
-        { withCredentials: true }
-      );
-      return response.data.notifications;
+      const response = await axiosInstance.get("/notifications");
+      return response.data.notifications || [];
     } catch (error) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch notifications"
@@ -24,11 +23,7 @@ export const markAllNotificationsRead = createAsyncThunk(
   "notifications/markAllRead",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.patch(
-        "https://socialfooddelivery-2.onrender.com/api/v1/notifications/mark-all-read",
-        {},
-        { withCredentials: true }
-      );
+      const response = await axiosInstance.patch("/notifications/mark-all-read");
       return response.data;
     } catch (error) {
       return rejectWithValue(
@@ -43,11 +38,7 @@ export const markNotificationRead = createAsyncThunk(
   "notifications/markRead",
   async (notificationId, { rejectWithValue }) => {
     try {
-      const response = await axios.patch(
-        `https://socialfooddelivery-2.onrender.com/api/v1/notifications/mark-read/${notificationId}`,
-        {},
-        { withCredentials: true }
-      );
+      const response = await axiosInstance.patch(`/notifications/mark-read/${notificationId}`);
       return { notificationId, ...response.data };
     } catch (error) {
       return rejectWithValue(
@@ -86,6 +77,8 @@ const rtnSlice = createSlice({
         read: false,
         // For post-related notifications, ensure post ID is saved consistently
         post: action.payload.post || action.payload.postId,
+        // For order notifications, preserve order data
+        order: action.payload.order || action.payload.orderId,
         // Generate a temporary ID if not present (for socket notifications)
         _id:
           action.payload._id ||
@@ -102,35 +95,94 @@ const rtnSlice = createSlice({
           normalizedNotification.message = "started following you";
         } else if (normalizedNotification.type === "message") {
           normalizedNotification.message = "sent you a message";
+        } else if (normalizedNotification.type === "order") {
+          normalizedNotification.message = action.payload.message || "placed an order from your post";
         }
       }
 
       // Check if the notification already exists in DB-stored notifications
       const existsInDB =
         Array.isArray(state.notifications) &&
-        state.notifications.some(
-          (notification) =>
+        state.notifications.some((notification) => {
+          // For order notifications, check order ID
+          if (normalizedNotification.type === "order" && notification.type === "order") {
+            const existingOrderId = notification.order?._id || notification.orderId;
+            const newOrderId = normalizedNotification.order?._id || normalizedNotification.orderId;
+            return existingOrderId && newOrderId && existingOrderId === newOrderId;
+          }
+          
+          // For other notifications, check the usual conditions
+          return (
             notification.type === normalizedNotification.type &&
-            (notification.sender?._id === normalizedNotification.sender ||
+            (notification.sender?._id === normalizedNotification.sender?._id ||
+              notification.sender?._id === normalizedNotification.sender ||
+              notification.sender === normalizedNotification.sender?._id ||
               notification.sender === normalizedNotification.sender) &&
             (notification.post === normalizedNotification.post ||
-              notification.postId === normalizedNotification.post)
-        );
+              notification.postId === normalizedNotification.post ||
+              notification.post?._id === normalizedNotification.post?._id)
+          );
+        });
 
       // Check if the notification already exists in realtime notifications
-      const existsInRealtime = state.realtimeNotifications.some(
-        (notification) =>
+      const existsInRealtime = state.realtimeNotifications.some((notification) => {
+        // For order notifications, check order ID
+        if (normalizedNotification.type === "order" && notification.type === "order") {
+          const existingOrderId = notification.order?._id || notification.orderId;
+          const newOrderId = normalizedNotification.order?._id || normalizedNotification.orderId;
+          return existingOrderId && newOrderId && existingOrderId === newOrderId;
+        }
+        
+        // For other notifications, check the usual conditions
+        return (
           notification.type === normalizedNotification.type &&
-          (notification.sender === normalizedNotification.sender ||
-            notification.sender?._id === normalizedNotification.sender) &&
+          (notification.sender === normalizedNotification.sender?._id ||
+            notification.sender?._id === normalizedNotification.sender?._id ||
+            notification.sender?._id === normalizedNotification.sender ||
+            notification.sender === normalizedNotification.sender) &&
           (notification.post === normalizedNotification.post ||
-            notification.postId === normalizedNotification.post)
-      );
+            notification.postId === normalizedNotification.post ||
+            notification.post?._id === normalizedNotification.post?._id)
+        );
+      });
 
       // Only add if it doesn't exist in either collection
       if (!existsInDB && !existsInRealtime) {
         state.realtimeNotifications.unshift(normalizedNotification);
         state.unseenCount += 1;
+        
+        // Handle order notifications
+        if (normalizedNotification.type === "order") {
+          const senderName = normalizedNotification.sender?.username || "Someone";
+          const orderTotal = normalizedNotification.order?.total 
+            ? ` - ₹${normalizedNotification.order.total.toFixed(2)}`
+            : "";
+          
+          // Check if this is a pickup order
+          const isPickupOrder = normalizedNotification.order?.deliveryMethod === 'pickup';
+          
+          if (isPickupOrder) {
+            // Show pickup-specific toast
+            toast.success(`🚗 ${senderName} placed a pickup order${orderTotal}`, {
+              position: "top-right",
+              autoClose: 7000,
+              hideProgressBar: false,
+              closeOnClick: true,
+              pauseOnHover: true,
+              draggable: true,
+            });
+          } else {
+            // Show regular order toast
+          toast.success(`🛒 ${senderName} placed an order${orderTotal}`, {
+            position: "top-right",
+            autoClose: 5000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+          }
+        }
       }
     },
 
@@ -197,7 +249,13 @@ const rtnSlice = createSlice({
       })
 
       // Mark one as read
+      .addCase(markNotificationRead.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
       .addCase(markNotificationRead.fulfilled, (state, action) => {
+        state.loading = false;
+        
         // Ensure notifications is an array
         if (!Array.isArray(state.notifications)) {
           state.notifications = [];
@@ -211,6 +269,10 @@ const rtnSlice = createSlice({
           notification.read = true;
           state.unseenCount = Math.max(0, state.unseenCount - 1);
         }
+      })
+      .addCase(markNotificationRead.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
       });
   },
 });

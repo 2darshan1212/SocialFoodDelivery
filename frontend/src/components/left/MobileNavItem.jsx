@@ -15,14 +15,24 @@ import {
   SwipeableDrawer
 } from "@mui/material";
 import moment from "moment";
-import { Check, Bell, Heart, MessageCircle, User } from "lucide-react";
+import { Check, Bell, Heart, MessageCircle, User, ShoppingCart } from "lucide-react";
 import { 
   markNotificationsSeen, 
   fetchNotifications, 
   markAllNotificationsRead, 
   markNotificationRead 
 } from "../../redux/rtnSlice";
+import { 
+  setShowPickupModal,
+  setSelectedOrderId,
+  clearPickupState,
+  addPickupNotification,
+  setCurrentNotificationOrder,
+  fetchOrderDetails
+} from "../../redux/pickupSlice";
 import { toast } from "react-toastify";
+import OrderDetailsModal from '../OrderDetailsModal';
+import PickupOrderDetailsModal from '../pickup/PickupOrderDetailsModal';
 
 // Custom tab panel for notification types
 function TabPanel(props) {
@@ -55,6 +65,9 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
   const [tabValue, setTabValue] = useState(0);
   const buttonRef = useRef(null);
   const isMobile = useMediaQuery('(max-width:768px)');
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [selectedOrderData, setSelectedOrderData] = useState(null);
 
   // Get notification data from Redux store
   const { 
@@ -63,6 +76,9 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
     unseenCount,
     loading 
   } = useSelector((store) => store.realTimeNotification);
+
+  // Get pickup state from Redux store
+  const { showPickupModal } = useSelector((store) => store.pickup);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -96,11 +112,17 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
   };
 
   const handleNotificationClick = (notification) => {
-    // If notification has an _id, mark it as read
-    if (notification._id && !notification.read) {
+    console.log("🔔 Notification clicked (Mobile):", notification);
+    console.log("🔔 Notification type:", notification.type);
+    
+    // Close the notification drawer
+    setIsNotificationDrawerOpen(false);
+    
+    // Mark notification as read if it has an ID
+    if (notification._id) {
       dispatch(markNotificationRead(notification._id));
     }
-
+    
     // Navigate based on notification type
     if (notification.type === 'like' || notification.type === 'comment') {
       // Handle both formats - older socket notifications vs database notifications
@@ -136,14 +158,123 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
         console.error("No sender ID found in notification:", notification);
         toast.error("Could not find the referenced user");
       }
+    } else if (notification.type === 'order') {
+      console.log("🛒 Processing order notification (Mobile)...");
+      console.log("🛒 Starting pickup notification processing flow...");
+      
+      // Handle order notifications - check if it's a pickup order
+      // Handle both formats: object with _id or direct string ID
+      const orderId = typeof notification.order === 'string' 
+        ? notification.order 
+        : notification.order?._id || notification.orderId;
+      
+      const deliveryMethod = typeof notification.order === 'object' 
+        ? notification.order?.deliveryMethod 
+        : undefined;
+      
+      // Log notification data to debug pickup detection
+      console.log("🔍 Order notification received (Mobile):", {
+        notification,
+        orderId,
+        deliveryMethod,
+        hasOrderObject: !!notification.order,
+        orderKeys: notification.order ? Object.keys(notification.order) : [],
+        orderType: typeof notification.order,
+        messageContent: notification.message
+      });
+      
+      // Multiple ways to detect pickup orders
+      const isPickupOrder = deliveryMethod === 'pickup' || 
+                           notification.message?.toLowerCase().includes('pickup') ||
+                           notification.message?.toLowerCase().includes('self-pickup');
+      
+      console.log("🚗 Is pickup order? (Mobile)", isPickupOrder);
+      console.log("🚗 Delivery method:", deliveryMethod);
+      console.log("🚗 Message includes 'pickup':", notification.message?.toLowerCase().includes('pickup'));
+      
+      if (orderId) {
+        console.log(`📦 Opening ${isPickupOrder ? 'pickup' : 'regular'} order details for order: ${orderId}`);
+        
+        if (isPickupOrder) {
+          // For pickup orders, use Redux pickup slice
+          console.log("🚗 Setting up pickup modal with order data (Mobile):", notification.order);
+          console.log("🚗 STARTING PICKUP MODAL SETUP SEQUENCE...");
+          
+          try {
+            // Step 1: Set the selected order ID
+            if (orderId && typeof orderId === 'string') {
+              console.log("🚗 Step 1: Dispatching setSelectedOrderId:", orderId);
+              dispatch(setSelectedOrderId(orderId));
+              console.log("🚗 Step 1: COMPLETED setSelectedOrderId");
+            } else {
+              console.error("🚗 Step 1: FAILED - Invalid orderId:", orderId, typeof orderId);
+            }
+            
+            // Step 2: Set current notification order if it's an object
+            if (notification.order && typeof notification.order === 'object') {
+              console.log("🚗 Step 2: Dispatching setCurrentNotificationOrder:", notification.order);
+              dispatch(setCurrentNotificationOrder(notification.order));
+              console.log("🚗 Step 2: COMPLETED setCurrentNotificationOrder");
+            } else {
+              console.log("🚗 Step 2: SKIPPED - notification.order is not an object:", typeof notification.order);
+            }
+            
+            // Step 3: Show the pickup modal
+            console.log("🚗 Step 3: Dispatching setShowPickupModal(true)");
+            dispatch(setShowPickupModal(true));
+            console.log("🚗 Step 3: COMPLETED setShowPickupModal(true)");
+            
+            // Step 4: Fetch full order details from the API
+            console.log("🚗 Step 4: Dispatching fetchOrderDetails:", orderId);
+            dispatch(fetchOrderDetails(orderId));
+            console.log("🚗 Step 4: COMPLETED fetchOrderDetails dispatch");
+            
+            // Step 5: Add the notification to pickup notifications
+            console.log("🚗 Step 5: Dispatching addPickupNotification");
+            dispatch(addPickupNotification(notification));
+            console.log("🚗 Step 5: COMPLETED addPickupNotification");
+            
+            console.log("🚗 🎉 PICKUP MODAL SETUP COMPLETE!");
+            
+          } catch (error) {
+            console.error("🚗 ❌ ERROR during pickup modal setup:", error);
+            toast.error("Failed to open pickup modal");
+          }
+        } else {
+          // For regular orders or when delivery method is unclear
+          console.log("📦 Setting up regular order modal or fetching details to determine type...");
+          dispatch(setSelectedOrderId(orderId));
+          dispatch(fetchOrderDetails(orderId)).then((result) => {
+            console.log("Order fetch result:", result);
+            if (result.payload && result.payload.deliveryMethod === 'pickup') {
+              console.log("🚗 Order confirmed as pickup, opening pickup modal");
+              dispatch(setCurrentNotificationOrder(result.payload));
+              dispatch(setShowPickupModal(true));
+              dispatch(addPickupNotification(notification));
+            } else {
+              console.log("📦 Order confirmed as regular delivery, opening regular modal");
+              setSelectedOrderData(result.payload || notification.order);
+              setOrderModalOpen(true);
+            }
+          }).catch((error) => {
+            console.error("Failed to fetch order details:", error);
+            // Fallback to regular modal
+            setSelectedOrderData(typeof notification.order === 'object' ? notification.order : null);
+        setOrderModalOpen(true);
+          });
+        }
+      } else {
+        console.error("❌ No order ID found in notification:", notification);
+        toast.error("Could not find the referenced order");
+      }
     } else {
-      console.warn("Unknown notification type:", notification.type);
+      console.warn("❓ Unknown notification type:", notification.type);
       toast.warning("This notification type is not supported yet");
     }
   };
 
   // Function to render a single notification
-  const renderNotification = (notification, index) => {
+  const renderNotification = (notification, index, context = '') => {
     let content = '';
     let icon = null;
     let timestamp = notification.createdAt ? moment(notification.createdAt).fromNow() : 'just now';
@@ -172,6 +303,10 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
           : 'sent you a message';
         icon = <MessageCircle size={16} className="text-purple-500" />;
         break;
+      case 'order':
+        content = notification.message || 'placed an order from your post';
+        icon = <ShoppingCart size={16} className="text-orange-500" />;
+        break;
       default:
         content = notification.message || 'interacted with you';
         icon = <Bell size={16} className="text-gray-500" />;
@@ -196,9 +331,14 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
       }, 150);
     };
     
+    // Create unique key by combining notification ID, context, and index
+    const uniqueKey = notification._id 
+      ? `${context}-${notification._id}` 
+      : `${context}-${notification.type}-${notification.sender?._id || 'unknown'}-${index}-${notification.createdAt || Date.now()}`;
+    
     return (
       <div
-        key={notification._id ? notification._id : `notification-${index}`}
+        key={uniqueKey}
         className={`flex gap-3 items-start p-4 hover:bg-gray-100 active:bg-gray-200 cursor-pointer transition-colors duration-150 ${
           !notification.read ? 'bg-blue-50' : ''
         }`}
@@ -236,11 +376,22 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
     );
   };
 
-  // Filter out message notifications from the allNotifications array
-  const allNotifications = [
+  // Remove duplicates and filter out message notifications
+  const removeDuplicates = (notificationList) => {
+    const uniqueMap = new Map();
+    notificationList.forEach(notification => {
+      const key = notification._id || `${notification.type}-${notification.sender?._id}-${notification.createdAt}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, notification);
+      }
+    });
+    return Array.from(uniqueMap.values());
+  };
+
+  const allNotifications = removeDuplicates([
     ...(Array.isArray(notifications) ? notifications : []), 
     ...(Array.isArray(realtimeNotifications) ? realtimeNotifications : [])
-  ]
+  ])
   .filter(notification => notification.type !== 'message') // Filter out message notifications
   .sort((a, b) => new Date(b.createdAt || Date.now()) - new Date(a.createdAt || Date.now()));
 
@@ -248,6 +399,7 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
   const followNotifications = allNotifications.filter(n => n.type === 'follow');
   const likeNotifications = allNotifications.filter(n => n.type === 'like');
   const commentNotifications = allNotifications.filter(n => n.type === 'comment');
+  const orderNotifications = allNotifications.filter(n => n.type === 'order');
 
   // Notification tab panel content
   const NotificationTabsContent = () => (
@@ -264,6 +416,7 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
           <Tab label="Follows" />
           <Tab label="Likes" />
           <Tab label="Comments" />
+          <Tab label="Orders" />
         </Tabs>
         <IconButton 
           size="small" 
@@ -291,7 +444,7 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
                 No notifications
               </p>
             ) : (
-              allNotifications.map((notification, index) => renderNotification(notification, `all-${index}`))
+              allNotifications.map((notification, index) => renderNotification(notification, index, 'all'))
             )}
           </TabPanel>
           
@@ -301,7 +454,7 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
                 No follow notifications
               </p>
             ) : (
-              followNotifications.map((notification, index) => renderNotification(notification, `follow-${index}`))
+              followNotifications.map((notification, index) => renderNotification(notification, index, 'follow'))
             )}
           </TabPanel>
           
@@ -311,7 +464,7 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
                 No like notifications
               </p>
             ) : (
-              likeNotifications.map((notification, index) => renderNotification(notification, `like-${index}`))
+              likeNotifications.map((notification, index) => renderNotification(notification, index, 'like'))
             )}
           </TabPanel>
           
@@ -321,7 +474,17 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
                 No comment notifications
               </p>
             ) : (
-              commentNotifications.map((notification, index) => renderNotification(notification, `comment-${index}`))
+              commentNotifications.map((notification, index) => renderNotification(notification, index, 'comment'))
+            )}
+          </TabPanel>
+          
+          <TabPanel value={tabValue} index={4}>
+            {orderNotifications.length === 0 ? (
+              <p className="p-4 text-sm text-gray-600 text-center">
+                No order notifications
+              </p>
+            ) : (
+              orderNotifications.map((notification, index) => renderNotification(notification, index, 'order'))
             )}
           </TabPanel>
         </>
@@ -414,6 +577,21 @@ const MobileNavItem = ({ icon, label, path, isPostButton = false, badgeCount }) 
           <NotificationTabsContent />
         </SwipeableDrawer>
       )}
+
+      {/* Order Details Modal */}
+      <OrderDetailsModal
+        open={orderModalOpen}
+        onClose={() => {
+          setOrderModalOpen(false);
+          setSelectedOrderId(null);
+          setSelectedOrderData(null);
+        }}
+        orderId={selectedOrderId}
+        orderData={selectedOrderData}
+      />
+      
+      {/* Pickup Order Details Modal */}
+      <PickupOrderDetailsModal />
     </>
   );
 };

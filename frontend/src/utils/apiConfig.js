@@ -34,7 +34,13 @@ export const API_TIMEOUT = isDevelopment ? 10000 : 30000; // 10s for dev, 30s fo
 // When deploying both frontend and backend to production, ensure we use the production URLs
 // Set forceProdUrls to true if you want to force using production URLs even in development
 const forceProdUrls = localStorage.getItem('forceProdUrls') === 'true';
-const useProductionUrls = isRenderDeploy || !isLocalhost || forceProdUrls;
+const forceLocalUrls = localStorage.getItem('forceLocalUrls') === 'true';
+const useProductionUrls = !forceLocalUrls && (isRenderDeploy || !isLocalhost || forceProdUrls);
+
+// For development testing, force local URLs
+if (isLocalhost && !forceProdUrls) {
+  localStorage.setItem('forceLocalUrls', 'true');
+}
 
 // Set appropriate URLs based on environment with production as the default for safety
 export const API_BASE_URL = useProductionUrls ? PRODUCTION_API_URL : DEVELOPMENT_API_URL;

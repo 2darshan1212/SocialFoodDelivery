@@ -24,7 +24,7 @@ export const getNotifications = async (req, res) => {
 };
 
 // Create a new notification
-export const createNotification = async (senderId, recipientId, type, message, postId = null, commentId = null) => {
+export const createNotification = async (senderId, recipientId, type, message, postId = null, commentId = null, orderId = null) => {
   try {
     // Don't create notification if sender is the recipient
     if (senderId.toString() === recipientId.toString()) {
@@ -38,6 +38,7 @@ export const createNotification = async (senderId, recipientId, type, message, p
       message,
       post: postId,
       comment: commentId,
+      order: orderId,
     });
 
     const savedNotification = await newNotification.save();
@@ -45,7 +46,8 @@ export const createNotification = async (senderId, recipientId, type, message, p
     // Get populated notification for socket emission
     const populatedNotification = await Notification.findById(savedNotification._id)
       .populate("sender", "username profilePicture")
-      .populate("post", "image video mediaType");
+      .populate("post", "image video mediaType")
+      .populate("order", "total status createdAt deliveryMethod items contactNumber");
 
     // Emit notification through socket
     const receiverSocketId = getReceiverSocketId(recipientId.toString());

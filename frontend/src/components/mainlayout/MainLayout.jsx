@@ -7,12 +7,16 @@ import { Home, Bell, PlusSquare, MessageCircle, Menu } from "lucide-react";
 import MobileNavItem from "../left/MobileNavItem";
 import MobileSidebar from "../left/MobileSidebar";
 import useGetCurrentUser from "../../hooks/useGetCurrentUser";
+import useFollowingsManager from "../../hooks/useFollowingsManager";
 
 const MainLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // Ensure current user data is loaded
   useGetCurrentUser();
+  
+  // Ensure user followings are properly managed
+  useFollowingsManager();
   
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);

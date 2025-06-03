@@ -24,6 +24,13 @@ const deliveryAgentSocketMap = {}; // agentId -> socketId
 export const getReceiverSocketId = (receiverId) => userSocketMap[receiverId];
 export const getAgentSocketId = (agentId) => deliveryAgentSocketMap[agentId];
 
+// Debug function to list all connected users
+export const getConnectedUsers = () => {
+  console.log('Currently connected users:', Object.keys(userSocketMap));
+  console.log('User socket map:', userSocketMap);
+  return userSocketMap;
+};
+
 // Socket connection handling
 io.on("connection", (socket) => {
   // Extract user ID from query parameters

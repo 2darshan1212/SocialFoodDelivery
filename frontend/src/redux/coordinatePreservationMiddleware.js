@@ -1,5 +1,24 @@
 // Redux middleware to preserve coordinates when orders are accepted
 const coordinatePreservationMiddleware = (store) => (next) => (action) => {
+  // Safety check: ensure action exists and has a type
+  if (!action || typeof action !== 'object' || typeof action.type !== 'string') {
+    if (action === undefined || action === null) {
+      console.warn('⚠️ Coordinate Preservation Middleware: Undefined or null action received, ignoring');
+      // Don't pass undefined/null actions to next middleware - just return
+      return;
+    }
+    if (typeof action !== 'object') {
+      console.warn('⚠️ Coordinate Preservation Middleware: Non-object action received:', typeof action, action);
+      // For non-object actions, still pass them through in case they're valid
+      return next(action);
+    }
+    if (typeof action.type !== 'string') {
+      console.warn('⚠️ Coordinate Preservation Middleware: Action missing type property:', action);
+      // Still pass through actions without proper type, let Redux handle the error
+      return next(action);
+    }
+  }
+
   // Monitor acceptDeliveryOrder.fulfilled actions
   if (action.type === 'delivery/acceptOrder/fulfilled') {
     console.log('🔍 Coordinate Preservation Middleware - Intercepting acceptOrder.fulfilled');
