@@ -1,192 +1,401 @@
 // utils/axiosInstance.js
 /**
  * Enhanced Axios instance for Social Food Delivery
- * Configured to work reliably in both development and production environments
- * Specifically optimized for the render.com deployment
+ * Optimized for mobile devices and production deployment on Render.com
+ * Includes robust retry mechanisms, token management, and error handling
  */
 import axios from "axios";
-import { API_BASE_URL, API_TIMEOUT, SERVER_URL } from "./apiConfig";
+import { API_BASE_URL, API_TIMEOUT, RETRY_CONFIG, environment } from "./apiConfig";
 import tokenManager from "./tokenManager";
 
 // Get the current environment information
-const isProduction = !window.location.hostname.includes('localhost');
-const isRenderDeploy = window.location.hostname.includes('render.com') || 
-                       window.location.hostname === 'socialfooddelivery-2.onrender.com';
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+const isProduction = environment.isProduction;
 
 // Show detailed connection information in console
-console.log('=== API CONNECTION CONFIG ===');
+console.log('=== AXIOS INSTANCE CONFIG ===');
 console.log('Base URL:', API_BASE_URL);
-console.log('Is Production:', isProduction);
-console.log('Is Render Deploy:', isRenderDeploy);
-console.log('Current Hostname:', window.location.hostname);
-console.log('===========================');
+console.log('Environment:', isProduction ? 'Production' : 'Development');
+console.log('Mobile device:', isMobile);
+console.log('Timeouts:', API_TIMEOUT);
+console.log('Retry config:', RETRY_CONFIG);
+console.log('================================');
 
 // Create axios instance with production-optimized settings
-// Make the instance available globally for direct access from token manager
-const instance = window.axiosInstance = axios.create({
+const instance = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, // This ensures cookies are sent with requests
-  timeout: API_TIMEOUT || 30000, // 30 second timeout for production to handle slow render.com cold starts
+  withCredentials: true, // Critical for cookies and authentication
+  timeout: API_TIMEOUT.medium, // Default timeout
   headers: {
     'Accept': 'application/json',
     'Content-Type': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest'
-  }
+    'X-Requested-With': 'XMLHttpRequest',
+    'X-Client-Platform': isMobile ? 'mobile' : 'desktop',
+    'X-Client-Version': '1.0.0',
+    'X-Environment': isProduction ? 'production' : 'development'
+  },
+  // Enhanced request validation
+  validateStatus: (status) => {
+    // Don't throw for client errors, let the app handle them
+    return status < 500;
+  },
+  // Maximum redirects
+  maxRedirects: 3,
+  // Request/response transformation
+  transformRequest: [
+    (data, headers) => {
+      // Add network quality information if available
+      if (navigator.connection) {
+        headers['X-Connection-Type'] = navigator.connection.effectiveType || 'unknown';
+        headers['X-Connection-Downlink'] = navigator.connection.downlink || 0;
+      }
+      
+      // Add timestamp for debugging
+      headers['X-Request-Timestamp'] = Date.now();
+      
+      return data;
+    },
+    ...axios.defaults.transformRequest
+  ]
 });
 
-// Request interceptor for adding auth token - IMPROVED REDUNDANT TOKEN HANDLING
-instance.interceptors.request.use((config) => {
-  try {
-    // Multi-source token acquisition strategy for maximum reliability
-    // 1. Try from localStorage directly
-    let token = localStorage.getItem('token');
-    
-    // 2. Try from sessionStorage if not in localStorage
-    if (!token) {
-      token = sessionStorage.getItem('token');
-    }
-    
-    // 3. Try from cookies
-    if (!token) {
-      const cookies = document.cookie.split(';');
-      for (let i = 0; i < cookies.length; i++) {
-        const cookie = cookies[i].trim();
-        if (cookie.startsWith('token=')) {
-          token = cookie.substring('token='.length);
-          break;
-        }
-      }
-    }
-    
-    // 4. As last resort, try from tokenManager
-    if (!token) {
-      // Force token initialization to ensure we have the latest token
-      tokenManager.initializeTokens();
-      token = tokenManager.getToken();
-    }
-    
-    if (token) {
-      // Force token to use string interpolation to ensure it's a string
-      token = `${token}`;
-      
-      console.log(`Auth token found (${token.substring(0, 10)}...) for request: ${config.url}`);
-      
-      // CRITICAL FIX: Set authentication headers in multiple formats for maximum compatibility
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
-      config.headers["x-auth-token"] = token;
-      config.headers.token = token;
-      
-      // Ensure cookies are sent with the request
-      config.withCredentials = true;
-      
-      // Add token to URL query parameters for absolute cross-origin reliability
-      // This is the most reliable method as it bypasses CORS header restrictions
-      const separator = config.url.includes('?') ? '&' : '?';
-      config.url = `${config.url}${separator}_auth=${token}`;
-      
-      // Log the configured request for debugging
-      console.log(`Request to ${config.url} configured with auth token in:`);
-      console.log('- Authorization header');
-      console.log('- x-auth-token header');
-      console.log('- token header');
-      console.log('- _auth query parameter');
-      
-      // If token found directly in storage but not in tokenManager, reinforce it
-      if (token !== tokenManager.getToken()) {
-        console.log('Reinforcing token in token manager');
-        tokenManager.setToken(token);
-      }
-      
-      // Log full request details for debugging
-      console.log(`Request details:\n- Method: ${config.method?.toUpperCase() || 'GET'}\n- URL: ${config.url}\n- Headers: ${JSON.stringify(Object.keys(config.headers))}`);
-    } else {
-      console.warn('⚠️ No token available for request:', config.url);
-      
-      // If this is not a login or public route, consider redirecting to login
-      const isAuthRoute = config.url.includes('/login') || config.url.includes('/signup') || 
-                          config.url.includes('/refresh-token') || config.url.includes('/public');
-      if (!isAuthRoute && typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        console.warn('⚠️ Unauthenticated request to protected route - redirecting to login');
-        // Use setTimeout to prevent this from blocking the current request
-        setTimeout(() => {
-          window.location.href = '/login';
-        }, 100);
-      }
-    }
-  
-  return config;
-  } catch (error) {
-    console.error('Error in request interceptor:', error);
-    return config;
-  }
-});
+// Make the instance available globally for debugging
+window.axiosInstance = instance;
 
-// Response interceptor for handling errors and token refresh
-instance.interceptors.response.use(
-  // For successful responses
-  (response) => response,
-  
-  // For error responses
-  async (error) => {
-    // Log error details
-    console.log(`API Error: ${error.response?.status || 'Network Error'}`);
-    console.log(`Request URL: ${error.config?.url || 'Unknown'}`);
-    
-    // Check for 401 Unauthorized errors
-    if (error.response?.status === 401 && !error.config?._retry) {
-      console.log('Unauthorized error - attempting token refresh');
+// Enhanced request interceptor with comprehensive token handling
+instance.interceptors.request.use(
+  (config) => {
+    try {
+      // Multi-source token acquisition strategy
+      let token = tokenManager.getToken();
       
-      try {
-        // Mark this request as retried
-        error.config._retry = true;
+      // If no token from manager, try direct storage access
+      if (!token) {
+        token = localStorage.getItem('token') || 
+                sessionStorage.getItem('token') || 
+                getCookieValue('token');
+      }
+      
+      if (token) {
+        console.log(`[AxiosInstance] Token found for request: ${config.method?.toUpperCase()} ${config.url}`);
         
-        // Get current token
-        const currentToken = tokenManager.getToken();
-        if (!currentToken) {
-          throw new Error('No token available for refresh');
+        // Set authentication headers in multiple formats for maximum compatibility
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+        config.headers["x-auth-token"] = token;
+        config.headers["auth-token"] = token;
+        config.headers.token = token;
+        
+        // Set secure cookie for cross-origin requests
+        if (typeof document !== 'undefined') {
+          const isSecure = window.location.protocol === 'https:';
+          const sameSite = isSecure ? 'None' : 'Lax';
+          const secureFlag = isSecure ? '; Secure' : '';
+          
+          document.cookie = `token=${token}; path=/; SameSite=${sameSite}${secureFlag}; max-age=86400`;
         }
         
-        // Try to refresh the token
-        const refreshResponse = await axios.post(
-          `${API_BASE_URL}/api/v1/user/refresh-token`,
-          { token: currentToken },
-          { withCredentials: true }
-        );
-        
-        if (refreshResponse.data?.token) {
-          // Store the new token using token manager
-          const newToken = refreshResponse.data.token;
-          tokenManager.saveToken(newToken);
-          
-          // Update request headers
-          error.config.headers.Authorization = `Bearer ${newToken}`;
-          error.config.headers["x-auth-token"] = newToken;
-          
-          // Add token to URL
-          const separator = error.config.url.includes('?') ? '&' : '?';
-          error.config.url = `${error.config.url}${separator}_auth=${newToken}`;
-          
-          // Retry the request
-          return instance(error.config);
+        // Add token to URL as fallback for problematic networks
+        if (config.url && !config.url.includes('_auth=')) {
+          const separator = config.url.includes('?') ? '&' : '?';
+          config.url = `${config.url}${separator}_auth=${encodeURIComponent(token)}`;
         }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
+      } else {
+        console.warn('[AxiosInstance] No authentication token available');
         
-        // Clear auth tokens on definite authentication failure
-        if (refreshError.response?.status === 401 || refreshError.response?.status === 403) {
-          tokenManager.clearToken();
-          window.location.href = '/login';
+        // Check if this is a protected route
+        const isPublicRoute = config.url?.includes('/login') || 
+                             config.url?.includes('/signup') || 
+                             config.url?.includes('/health') ||
+                             config.url?.includes('/public');
+        
+        if (!isPublicRoute) {
+          console.warn('[AxiosInstance] Making request to protected route without token');
         }
       }
+      
+      // Adjust timeout based on request type and network conditions
+      if (!config.timeout) {
+        if (config.method === 'post' && config.data instanceof FormData) {
+          config.timeout = API_TIMEOUT.upload; // File uploads
+        } else if (config.method === 'get') {
+          config.timeout = API_TIMEOUT.medium; // Regular GET requests
+        } else {
+          config.timeout = API_TIMEOUT.medium; // Default
+        }
+      }
+      
+      // Add retry metadata
+      config.retryCount = config.retryCount || 0;
+      config.retryDelay = config.retryDelay || RETRY_CONFIG.baseDelay;
+      
+      // Log request details for debugging
+      console.log(`[AxiosInstance] ${config.method?.toUpperCase()} ${config.url}`, {
+        timeout: config.timeout,
+        retryCount: config.retryCount,
+        hasAuth: !!token
+      });
+      
+      return config;
+    } catch (error) {
+      console.error('[AxiosInstance] Request interceptor error:', error);
+      return config;
     }
-    
-    // Return the error for further handling
+  },
+  (error) => {
+    console.error('[AxiosInstance] Request setup error:', error);
     return Promise.reject(error);
   }
 );
 
-export default instance;
+// Enhanced response interceptor with intelligent retry logic
+instance.interceptors.response.use(
+  // Successful responses
+  (response) => {
+    // Log successful requests
+    const { config, status, data } = response;
+    console.log(`[AxiosInstance] ✅ ${config?.method?.toUpperCase()} ${config?.url} - ${status}`, {
+      success: data?.success,
+      retryCount: config?.retryCount || 0
+    });
+    
+    return response;
+  },
+  
+  // Error responses with intelligent retry
+  async (error) => {
+    const { config, response, code, message } = error;
+    
+    console.error(`[AxiosInstance] ❌ ${config?.method?.toUpperCase()} ${config?.url}`, {
+      status: response?.status,
+      code,
+      message,
+      retryCount: config?.retryCount || 0
+    });
+    
+    // Don't retry if no config (prevents infinite loops)
+    if (!config) {
+      return Promise.reject(error);
+    }
+    
+    // Check if we should retry this request
+    const shouldRetry = determineRetryStrategy(error, config);
+    
+    if (shouldRetry.retry && config.retryCount < RETRY_CONFIG.maxRetries) {
+      console.log(`[AxiosInstance] Retrying in ${shouldRetry.delay}ms... (attempt ${config.retryCount + 1}/${RETRY_CONFIG.maxRetries})`);
+      
+      // Mark this request as being retried
+      config.retryCount = (config.retryCount || 0) + 1;
+      config._retry = true;
+      
+      // Handle token refresh for auth errors
+      if (shouldRetry.refreshToken) {
+        try {
+          await refreshAuthToken(config);
+        } catch (refreshError) {
+          console.error('[AxiosInstance] Token refresh failed:', refreshError);
+          // Clear invalid tokens
+          tokenManager.clearToken();
+          
+          // Redirect to login if in browser
+          if (typeof window !== 'undefined' && window.location) {
+            setTimeout(() => {
+              window.location.href = '/login';
+            }, 1000);
+          }
+          
+          return Promise.reject(error);
+        }
+      }
+      
+      // Wait before retry with exponential backoff + jitter
+      const jitter = Math.random() * 500; // Add randomness
+      const totalDelay = Math.min(shouldRetry.delay + jitter, RETRY_CONFIG.maxDelay);
+      
+      await new Promise(resolve => setTimeout(resolve, totalDelay));
+      
+      // Retry the request
+      return instance(config);
+    }
+    
+    // No more retries, reject with enhanced error info
+    const enhancedError = enhanceErrorInfo(error);
+    return Promise.reject(enhancedError);
+  }
+);
 
-// Also export the base URL for direct use where needed
+// Utility function to get cookie value
+function getCookieValue(name) {
+  if (typeof document === 'undefined') return null;
+  
+  const cookies = document.cookie.split(';');
+  for (let cookie of cookies) {
+    const [cookieName, cookieValue] = cookie.trim().split('=');
+    if (cookieName === name) {
+      return cookieValue;
+    }
+  }
+  return null;
+}
+
+// Determine retry strategy based on error type
+function determineRetryStrategy(error, config) {
+  const { response, code, message } = error;
+  const status = response?.status;
+  
+  // Network errors - always retry
+  if (!response || code === 'ECONNABORTED' || code === 'NETWORK_ERROR') {
+    return {
+      retry: true,
+      delay: RETRY_CONFIG.baseDelay * Math.pow(RETRY_CONFIG.exponentialBase, config.retryCount || 0),
+      reason: 'Network error'
+    };
+  }
+  
+  // Timeout errors - retry with longer delay
+  if (code === 'ECONNABORTED' || message.includes('timeout')) {
+    return {
+      retry: true,
+      delay: RETRY_CONFIG.baseDelay * 2 * Math.pow(RETRY_CONFIG.exponentialBase, config.retryCount || 0),
+      reason: 'Timeout error'
+    };
+  }
+  
+  // Server errors (5xx) - retry
+  if (status >= 500) {
+    return {
+      retry: true,
+      delay: RETRY_CONFIG.baseDelay * Math.pow(RETRY_CONFIG.exponentialBase, config.retryCount || 0),
+      reason: 'Server error'
+    };
+  }
+  
+  // Rate limiting - retry with longer delay
+  if (status === 429) {
+    const retryAfter = response.headers['retry-after'];
+    const delay = retryAfter ? parseInt(retryAfter) * 1000 : RETRY_CONFIG.baseDelay * 4;
+    
+    return {
+      retry: true,
+      delay: Math.min(delay, RETRY_CONFIG.maxDelay),
+      reason: 'Rate limited'
+    };
+  }
+  
+  // Auth errors - try token refresh
+  if (status === 401 && !config._tokenRefreshAttempted) {
+    return {
+      retry: true,
+      refreshToken: true,
+      delay: 1000,
+      reason: 'Auth token expired'
+    };
+  }
+  
+  // Client errors (4xx except 401, 408, 429) - don't retry
+  if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+    return {
+      retry: false,
+      reason: 'Client error - not retryable'
+    };
+  }
+  
+  // Default - retry with standard delay
+  return {
+    retry: true,
+    delay: RETRY_CONFIG.baseDelay * Math.pow(RETRY_CONFIG.exponentialBase, config.retryCount || 0),
+    reason: 'General error'
+  };
+}
+
+// Token refresh function
+async function refreshAuthToken(config) {
+  try {
+    const currentToken = tokenManager.getToken();
+    if (!currentToken) {
+      throw new Error('No token to refresh');
+    }
+    
+    console.log('[AxiosInstance] Attempting token refresh...');
+    
+    const refreshResponse = await axios.post(
+      `${API_BASE_URL}/user/refresh-token`,
+      { token: currentToken },
+      { 
+        withCredentials: true,
+        timeout: API_TIMEOUT.short,
+        // Don't retry token refresh requests
+        retryCount: RETRY_CONFIG.maxRetries
+      }
+    );
+    
+    if (refreshResponse.data?.token) {
+      const newToken = refreshResponse.data.token;
+      tokenManager.saveToken(newToken);
+      
+      // Update the original request config with new token
+      config.headers.Authorization = `Bearer ${newToken}`;
+      config.headers["x-auth-token"] = newToken;
+      config._tokenRefreshAttempted = true;
+      
+      console.log('[AxiosInstance] Token refreshed successfully');
+      return newToken;
+    } else {
+      throw new Error('Invalid refresh response');
+    }
+  } catch (refreshError) {
+    console.error('[AxiosInstance] Token refresh failed:', refreshError);
+    throw refreshError;
+  }
+}
+
+// Enhance error information for better debugging
+function enhanceErrorInfo(error) {
+  const enhanced = { ...error };
+  
+  enhanced.isNetworkError = !error.response;
+  enhanced.isTimeoutError = error.code === 'ECONNABORTED';
+  enhanced.isServerError = error.response?.status >= 500;
+  enhanced.isClientError = error.response?.status >= 400 && error.response?.status < 500;
+  enhanced.isAuthError = error.response?.status === 401 || error.response?.status === 403;
+  enhanced.userFriendlyMessage = getUserFriendlyErrorMessage(error);
+  
+  return enhanced;
+}
+
+// Generate user-friendly error messages
+function getUserFriendlyErrorMessage(error) {
+  if (!navigator.onLine) {
+    return 'No internet connection. Please check your network and try again.';
+  }
+  
+  if (error.code === 'ECONNABORTED') {
+    return 'Request timed out. Please check your connection and try again.';
+  }
+  
+  if (!error.response) {
+    return 'Network error. Please check your internet connection.';
+  }
+  
+  const status = error.response.status;
+  
+  switch (status) {
+    case 401:
+      return 'Please log in to continue.';
+    case 403:
+      return 'Access denied. Please check your permissions.';
+    case 404:
+      return 'The requested resource was not found.';
+    case 429:
+      return 'Too many requests. Please wait a moment and try again.';
+    case 500:
+      return 'Server error. Please try again later.';
+    case 503:
+      return 'Service temporarily unavailable. Please try again later.';
+    default:
+      return error.response?.data?.message || 'Something went wrong. Please try again.';
+  }
+}
+
+export default instance;
 export { API_BASE_URL };
