@@ -1,3 +1,6 @@
+// Import BigInt polyfill first to ensure BigInt support across all environments
+import './utils/bigintPolyfill.js';
+
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";

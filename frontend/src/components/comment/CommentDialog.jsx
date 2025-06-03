@@ -22,6 +22,7 @@ import { getApiUrl } from "../../utils/apiConfig";
 import { setPosts } from "../../redux/postSlice";
 import { FiSend, FiX, FiMoreVertical, FiHeart, FiShare, FiRefreshCw } from "react-icons/fi";
 import { toast } from "react-toastify";
+import { SafeMath } from '../../utils/bigintPolyfill';
 
 // Mobile-optimized API service for comments
 const CommentAPI = {
@@ -82,7 +83,7 @@ const CommentAPI = {
         
         // Wait before retry (exponential backoff)
         if (attempt < maxRetries) {
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          const delay = SafeMath.min(1000 * SafeMath.pow(2, attempt - 1), 5000);
           console.log(`[CommentAPI] Waiting ${delay}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }

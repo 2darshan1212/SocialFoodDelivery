@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { 
   PublicKey, 
@@ -22,6 +22,7 @@ import {
   Paper 
 } from '@mui/material';
 import SolanaWalletButton from './SolanaWalletButton';
+import { safeSOLToLamports, safeLamportsToSOL, safeBigIntToNumber } from '../../utils/bigintPolyfill';
 
 const SolanaPayment = ({ amount, onSuccess, onError }) => {
   const { publicKey, sendTransaction } = useWallet();
@@ -44,7 +45,9 @@ const SolanaPayment = ({ amount, onSuccess, onError }) => {
     if (publicKey && connection) {
       try {
         const lamports = await connection.getBalance(publicKey);
-        setBalance(lamports / LAMPORTS_PER_SOL);
+        // Use safe conversion to avoid BigInt issues
+        const balanceSOL = safeLamportsToSOL(lamports, LAMPORTS_PER_SOL);
+        setBalance(balanceSOL);
       } catch (error) {
         console.error('Error fetching balance:', error);
         setBalance(null);
@@ -75,15 +78,17 @@ const SolanaPayment = ({ amount, onSuccess, onError }) => {
       dispatch(setPaymentPending());
 
       // Check balance first
-      const currentBalance = await connection.getBalance(publicKey);
-      // Convert to integer before using in calculations to avoid BigInt conversion errors
-      const requiredLamports = Math.round(solAmount * LAMPORTS_PER_SOL);
+      const currentBalanceLamports = await connection.getBalance(publicKey);
+      // Use safe conversion to avoid BigInt conversion errors
+      const currentBalanceSOL = safeLamportsToSOL(currentBalanceLamports, LAMPORTS_PER_SOL);
+      const requiredLamports = safeSOLToLamports(solAmount, LAMPORTS_PER_SOL);
       
-      console.log(`Current balance: ${currentBalance / LAMPORTS_PER_SOL} SOL`);
+      console.log(`Current balance: ${currentBalanceSOL} SOL`);
       console.log(`Required amount: ${solAmount} SOL`);
       console.log(`Required lamports: ${requiredLamports}`);
 
-      if (currentBalance < requiredLamports) {
+      // Safe comparison using converted values
+      if (safeBigIntToNumber(currentBalanceLamports) < requiredLamports) {
         throw new Error(`Insufficient balance. You need at least ${solAmount} SOL.`);
       }
 
@@ -92,7 +97,7 @@ const SolanaPayment = ({ amount, onSuccess, onError }) => {
         SystemProgram.transfer({
           fromPubkey: publicKey,
           toPubkey: new PublicKey(RECIPIENT_WALLET),
-          lamports: requiredLamports // This is now guaranteed to be an integer
+          lamports: requiredLamports // This is now guaranteed to be a safe integer
         })
       );
 

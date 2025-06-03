@@ -27,6 +27,8 @@ export default defineConfig(({ command, mode }) => {
     define: {
       __DEV__: isDevelopment,
       __PROD__: isProduction,
+      // Fix BigInt global availability
+      global: 'globalThis',
     },
     
     // Development server configuration
@@ -61,6 +63,9 @@ export default defineConfig(({ command, mode }) => {
       sourcemap: false, // Disable sourcemaps for production to reduce bundle size
       minify: 'terser',
       
+      // Target modern browsers that support BigInt
+      target: ['es2020', 'chrome67', 'firefox68', 'safari14', 'edge79'],
+      
       // Optimize build for mobile devices
       rollupOptions: {
         output: {
@@ -71,7 +76,11 @@ export default defineConfig(({ command, mode }) => {
             router: ['react-router-dom'],
             redux: ['@reduxjs/toolkit', 'react-redux', 'redux-persist'],
             ui: ['@mui/material', '@mui/icons-material'],
-            utils: ['axios', 'moment', 'date-fns']
+            utils: ['axios', 'moment', 'date-fns'],
+            // Separate crypto/blockchain libraries to isolate BigInt issues
+            crypto: ['@solana/web3.js', '@solana/wallet-adapter-base', '@solana/wallet-adapter-react'],
+            wallet: ['@solana/wallet-adapter-react-ui', '@solana/wallet-adapter-wallets'],
+            blockchain: ['ethers', '@story-protocol/core-sdk']
           },
           // Optimize chunk file names
           chunkFileNames: (chunkInfo) => {
@@ -86,15 +95,25 @@ export default defineConfig(({ command, mode }) => {
         external: isProduction ? [] : undefined
       },
       
-      // Terser options for better minification
+      // Terser options for better minification with BigInt support
       terserOptions: {
         compress: {
           drop_console: isProduction, // Remove console.logs in production
           drop_debugger: true,
-          pure_funcs: isProduction ? ['console.log', 'console.debug', 'console.info'] : []
+          pure_funcs: isProduction ? ['console.log', 'console.debug', 'console.info'] : [],
+          // Preserve BigInt operations
+          keep_infinity: true,
+          passes: 2
         },
         mangle: {
-          safari10: true // Fix Safari 10 issues
+          safari10: true, // Fix Safari 10 issues
+          // Keep BigInt-related functions intact
+          reserved: ['BigInt', 'BigUint64Array', 'BigInt64Array']
+        },
+        format: {
+          // Preserve BigInt literals
+          preserve_annotations: true,
+          comments: false
         }
       },
       
@@ -102,11 +121,8 @@ export default defineConfig(({ command, mode }) => {
       assetsInlineLimit: 4096, // Inline assets smaller than 4kb
       cssCodeSplit: true, // Split CSS for better caching
       
-      // Chunk size warning limit
-      chunkSizeWarningLimit: 1600,
-      
-      // Target modern browsers but include mobile compatibility
-      target: ['es2015', 'chrome58', 'firefox57', 'safari11', 'edge79']
+      // Chunk size warning limit (increased for crypto libraries)
+      chunkSizeWarningLimit: 2000,
     },
     
     // Preview server configuration (for production testing)
@@ -116,7 +132,7 @@ export default defineConfig(({ command, mode }) => {
       cors: true
     },
     
-    // Optimize dependencies
+    // Optimize dependencies with BigInt support
     optimizeDeps: {
       include: [
         'react',
@@ -127,7 +143,25 @@ export default defineConfig(({ command, mode }) => {
         'axios',
         '@mui/material',
         'react-icons/fi'
-      ]
+      ],
+      // Exclude problematic crypto dependencies from pre-bundling
+      exclude: [
+        '@solana/web3.js',
+        '@solana/wallet-adapter-base',
+        '@solana/wallet-adapter-react',
+        '@solana/wallet-adapter-react-ui',
+        '@solana/wallet-adapter-wallets',
+        'ethers',
+        '@story-protocol/core-sdk'
+      ],
+      // Force ESM for better BigInt support
+      esbuildOptions: {
+        target: 'es2020',
+        // Define global for crypto libraries
+        define: {
+          global: 'globalThis'
+        }
+      }
     },
     
     // CSS configuration

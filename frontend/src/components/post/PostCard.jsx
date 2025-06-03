@@ -45,6 +45,7 @@ import {
 import { addNotification } from "../../redux/rtnSlice";
 import { updateBookmarks, syncUserBookmarks } from "../../redux/authSlice";
 import useCart from "../../hooks/useCart";
+import { SafeMath } from "../../utils/bigintPolyfill";
 
 // Define a GoogleMap component within the file
 const GoogleMapEmbed = ({ lat1, lon1, lat2, lon2, height = 400 }) => {
@@ -76,7 +77,7 @@ const GoogleMapEmbed = ({ lat1, lon1, lat2, lon2, height = 400 }) => {
       const centerLon = (lon1 + lon2) / 2;
 
       // Calculate appropriate zoom based on distance
-      const distance = Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lon2 - lon1, 2));
+      const distance = Math.sqrt(SafeMath.pow(lat2 - lat1, 2) + SafeMath.pow(lon2 - lon1, 2));
       let zoom = 13;
       if (distance > 0.1) zoom = 10;
       else if (distance > 0.01) zoom = 12;
@@ -218,7 +219,7 @@ const haversineDistance = (coords1, coords2) => {
 
     // Get cardinal direction
     const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "N"];
-    const cardinalDirection = directions[Math.round(bearing / 45)];
+    const cardinalDirection = directions[SafeMath.round(bearing / 45)];
 
     // Calculate estimated travel time (rough estimate)
     const walkingTimeMinutes = distanceKm / 0.0833; // Assuming 5km/hour walking speed
@@ -497,8 +498,8 @@ const RatingSummary = ({ postId, initialRating, onClose }) => {
 
   // Calculate percentage for each star rating
   const calculatePercentage = (count) => {
-    if (!ratings || ratings.count === 0) return 0;
-    return Math.round((count / ratings.count) * 100);
+    if (!ratings || !ratings.count) return 0;
+    return SafeMath.round((count / ratings.count) * 100);
   };
 
   if (loading) {
@@ -1034,7 +1035,7 @@ const PostCard = ({ post }) => {
           </p>
           {distanceDetails && (
             <p className="text-xs text-gray-500">
-              ~{Math.ceil(distanceDetails.estimates.drivingTime)} min delivery
+              ~{SafeMath.ceil(distanceDetails.estimates.drivingTime)} min delivery
             </p>
           )}
         </div>
@@ -1804,7 +1805,7 @@ const PostCard = ({ post }) => {
               color="text.secondary"
               sx={{ display: "block", mt: 0.5 }}
             >
-              Location accuracy: ±{Math.round(locationAccuracy)} meters
+              Location accuracy: ±{SafeMath.round(locationAccuracy)} meters
             </Typography>
           )}
         </DialogTitle>
@@ -1840,21 +1841,21 @@ const PostCard = ({ post }) => {
               <Grid item xs={6} md={3}>
                 <Typography variant="body2" component="div">
                   <strong>Direction:</strong> {distanceDetails?.direction} (
-                  {Math.round(distanceDetails?.bearing)}°)
+                  {SafeMath.round(distanceDetails?.bearing)}°)
                 </Typography>
               </Grid>
 
               <Grid item xs={6} md={3}>
                 <Typography variant="body2" component="div">
                   <strong>Est. driving time:</strong>{" "}
-                  {Math.ceil(distanceDetails?.estimates.drivingTime)} mins
+                  {SafeMath.ceil(distanceDetails?.estimates.drivingTime)} mins
                 </Typography>
               </Grid>
 
               <Grid item xs={6} md={3}>
                 <Typography variant="body2" component="div">
                   <strong>Est. walking time:</strong>{" "}
-                  {Math.ceil(distanceDetails?.estimates.walkingTime)} mins
+                  {SafeMath.ceil(distanceDetails?.estimates.walkingTime)} mins
                 </Typography>
               </Grid>
             </Grid>
